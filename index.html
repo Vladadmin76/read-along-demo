@@ -17,6 +17,7 @@
 html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:17px/1.4 "Atkinson Hyperlegible",system-ui,sans-serif;overflow:hidden}
 .app{display:flex;flex-direction:column;height:100dvh;padding-top:env(safe-area-inset-top);max-width:820px;margin:0 auto}
 .stage{position:relative;aspect-ratio:16/9;background:var(--paper);border-bottom:2px solid #d9cfb8;overflow:hidden;flex:none}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%}
 .stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
 .sketch{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:4% 6%;font-family:"Patrick Hand",cursive;
  background:repeating-linear-gradient(0deg,transparent 0 27px,#e7dcc3 27px 28px),var(--paper)}
@@ -77,7 +78,7 @@ input[type=file]{font-size:16px;max-width:100%}
 <body>
 <div class="app">
   <div class="stage" id="stage">
-    <video id="vid" muted playsinline preload="auto" hidden></video>
+    <video id="vid" muted playsinline preload="auto" hidden></video><canvas id="cv" width="480" height="270" hidden></canvas>
     <div class="sketch" id="sketch"><span class="sid" id="sid">S01</span><span class="ph">placeholder — no video yet</span>
       <div class="scene" id="scene"></div><div class="act" id="act"></div>
       <div class="tl" id="tl"></div></div>
@@ -106,6 +107,7 @@ input[type=file]{font-size:16px;max-width:100%}
   <div class="opt"><label>Debug log</label><div class="seg" data-k="dbg"><button data-v="1">On</button><button data-v="0">Off</button></div>
     <button id="copylog" style="width:100%;margin-top:8px">Copy log</button><p class="note" id="copied"></p></div>
   <div class="opt"><label>Video</label><div class="seg" data-k="video"><button data-v="1">On</button><button data-v="0">Off (test mic without video)</button></div></div>
+  <div class="opt"><label>Cartoon player</label><div class="seg" data-k="pic"><button data-v="frames">Frames (safe for iPhone mic)</button><button data-v="video">Video</button></div></div>
   <div class="opt"><label>Error sound “bam”</label><div class="seg" data-k="bam"><button data-v="1">On</button><button data-v="0">Off</button></div>
     <p class="note">Test only: on iPhone, playing sound may stop the microphone. Needs error-bam.mp3 from a loaded package.</p></div>
   <button class="pri" id="setClose" style="width:100%">Done</button>
@@ -159,7 +161,7 @@ function sim(a,b){if(a===b)return 1;const r=ratio(a,b),pa=phon(a),pb=phon(b);ret
 const TH={easy:.6,normal:.72,strict:.88},NEAR=.55;
 
 // ---------- state ----------
-const S={strict:"normal",mode:"one",dim:"1",heard:"1",bam:"0",dbg:"1",video:"1"};
+const S={strict:"normal",mode:"one",dim:"1",heard:"1",bam:"0",dbg:"1",video:"1",pic:"frames"};
 try{Object.assign(S,JSON.parse(localStorage.getItem("ra_set")||"{}"))}catch(e){}
 let story,files={},bamUrl=null;
 let sent=0,pos=0,errs=0,errRow=0,started=false,finished=false,freeze=false;
@@ -179,14 +181,21 @@ function paint(){const ps=$("text").children;
 function scrollText(){const t=$("text"),p=t.children[sent];if(!p)return;
  if(S.mode==="one"){t.scrollTop=0;return}
  const w=p.querySelector(".w.next")||p,off=w.offsetTop-t.clientHeight*0.3;t.scrollTo({top:Math.max(0,off),behavior:"smooth"})}
-function showSeg(i){vidSeg=i;cur=0;target=0;const g=story.segments[i];if(!g)return;
+function showSeg(i){vidSeg=i;cur=0;target=0;const g=story.segments[i];if(!g)return;g.lastK=-1;
  $("sid").textContent=g.id;$("scene").textContent=g.scene||g.text_en;$("act").textContent=g.action||"";$("act").classList.remove("on");
  $("tl").innerHTML=g.marks.map(m=>`<i style="left:${100*m/g.dur}%"></i>`).join("")+`<b id="dot" style="left:0"></b>`;
+ const cv=$("cv");cv.hidden=true;
+ if(S.video==="1"&&S.pic==="frames"&&g.sprite&&g.sf&&story.base!=null){const v=$("vid");v.hidden=true;v.pause();$("sketch").style.visibility="hidden";cv.hidden=false;
+  g.dur=g.sf/g.sfps;g.img=sprite(g);const nx=story.segments[i+1];if(nx&&nx.sprite)sprite(nx);drawFrame(g,0);return}
  const v=$("vid"),f=g.video&&(files[g.video.split("/").pop()]||(story.base!=null?story.base+g.video:null));
  if(f&&S.video==="1"){v.hidden=false;$("sketch").style.visibility="hidden";if(v.dataset.src!==f){if(!f.startsWith("blob:"))v.poster=f.replace(/\.mp4$/,".jpg");v.src=f;v.dataset.src=f;v.load();L("video load "+g.id)}
   v.pause();try{v.currentTime=0}catch(e){}
   v.onloadeddata=()=>{if(vidSeg===i&&cur===0){try{v.currentTime=0}catch(e){}}}}
  else{v.hidden=true;v.pause();$("sketch").style.visibility="visible"}}
+const SPR={};
+function sprite(g){const u=story.base+g.sprite;if(!SPR[u]){const im=new Image();im.onload=()=>{L("frames loaded "+g.id);if(story.segments[vidSeg]===g)drawFrame(g,cur)};im.onerror=()=>L("frames FAILED "+g.id);im.src=u;SPR[u]=im}return SPR[u]}
+function drawFrame(g,t){const im=g.img;if(!im||!im.complete||!im.naturalWidth)return;const k=Math.max(0,Math.min(g.sf-1,Math.floor(t*g.sfps)));
+ if(g.lastK===k)return;g.lastK=k;const c=$("cv").getContext("2d");c.drawImage(im,(k%10)*480,Math.floor(k/10)*270,480,270,0,0,480,270)}
 function setMsg(t){$("msg").textContent=t||""}
 
 // ---------- video clock ----------
@@ -194,7 +203,7 @@ let last=performance.now();
 function tick(now){const dt=Math.min(.1,(now-last)/1000);last=now;const g=story.segments[vidSeg],v=$("vid");
  if(g){if(!v.hidden){if(v.currentTime<target-.04&&v.paused&&!freeze){v.play().then(()=>L(`video play ${g.id} to ${target.toFixed(1)}s`)).catch(x=>L("video play failed: "+x.name))}if(v.currentTime>=target-.02&&!v.paused)v.pause();cur=v.currentTime;
    if(v.ended||cur>=g.dur-.05)cur=Math.max(cur,g.dur)}
-  else{if(cur<target&&!freeze)cur=Math.min(target,cur+dt*(target-cur>1?2:1));const d=$("dot");if(d)d.style.left=(100*cur/g.dur)+"%"}
+  else{if(cur<target&&!freeze)cur=Math.min(target,cur+dt*(target-cur>1?2:1));const d=$("dot");if(d)d.style.left=(100*cur/g.dur)+"%";if(!$("cv").hidden)drawFrame(g,cur)}
   const ti=g.words.findIndex((w,k)=>g.trig.includes(w)&&g.marks[k]<=cur+.01&&cur>0);if(ti>=0)$("act").classList.add("on");
   if(vidSeg<sent&&cur>=Math.min(target,g.dur)-.02&&target>=g.dur-.01&&!finished)showSeg(sent)}
  requestAnimationFrame(tick)}
@@ -229,16 +238,17 @@ function onWords(toks,finalLen){let cp=0;while(cp<toks.length&&cp<prevToks.lengt
   if(r===0)break;if(r===-1){consumed=toks.length;return}i+=r;consumed=i}}
 
 // ---------- speech ----------
-const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let rec=null,want=false;
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let rec=null,want=false,lastEv=0;
+setInterval(()=>{if(want&&rec&&!freeze&&!finished&&Date.now()-lastEv>6000){L("watchdog: no words for 6s -> restart mic");lastEv=Date.now();const old=rec;rec=null;old.onend=null;old.onresult=null;try{old.abort()}catch(e){}setTimeout(()=>{if(want&&!rec)startRec()},300)}},1000);
 function startRec(){if(!SR){setMsg("Speech recognition is not available in this browser. On iPhone use Safari.");return}
  rec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=1;consumed=0;lastLen=0;prevToks=[];L("mic: starting");
  rec.onresult=e=>{let txt="",fin="";for(let i=0;i<e.results.length;i++){const t=e.results[i][0].transcript;txt+=" "+t;if(e.results[i].isFinal)fin+=" "+t}
   const toks=txt.split(/\s+/).map(norm).filter(Boolean),fl=fin.split(/\s+/).map(norm).filter(Boolean).length;
-  if(S.heard==="1")$("heard").textContent="Heard: "+toks.slice(-8).join(" ");L(`heard[${toks.length},final ${fl}]: ${toks.slice(-6).join(" ")}`);onWords(toks,fl)};
+  if(S.heard==="1")$("heard").textContent="Heard: "+toks.slice(-8).join(" ");lastEv=Date.now();L(`heard[${toks.length},final ${fl}]: ${toks.slice(-6).join(" ")}`);onWords(toks,fl)};
  rec.onerror=e=>{L("mic error: "+e.error);if(e.error==="not-allowed"||e.error==="service-not-allowed"){want=false;setMsg("Microphone access is blocked. Allow it in Settings and reload.");ui()}
   else if(e.error==="network")setMsg("No internet connection — speech recognition needs it.");
   else if(e.error!=="no-speech"&&e.error!=="aborted")setMsg("Speech error: "+e.error)};
- rec.onstart=()=>{L("mic: listening");setMsg("");ui()};
+ rec.onstart=()=>{lastEv=Date.now();L("mic: listening");setMsg("");ui()};
  rec.onend=()=>{L("mic: ended"+(want?" -> restart":""));rec=null;if(want)setTimeout(()=>{if(want&&!rec)startRec()},200);else ui()};
  try{rec.start()}catch(e){setMsg("Could not start the microphone.")}}
 function stopRec(){want=false;if(rec){try{rec.abort()}catch(e){}}ui()}
@@ -277,7 +287,7 @@ $("choose").onclick=()=>{listStories();$("storySheet").classList.add("on")};$("s
 function useManifest(man,base){
  const old=story.segments;
  const segs=man.segments.slice().sort((a,b)=>a.order-b.order).map((s,i)=>{const w=Array.isArray(s.words)?s.words:null;
-  return {id:s.id,text_en:s.text_en,trigger_words:s.trigger_words,video:s.video,scene:old[i]&&old[i].text_en===s.text_en?old[i].scene:"",action:old[i]?old[i].action:"",
+  return {id:s.id,text_en:s.text_en,trigger_words:s.trigger_words,video:s.video,sprite:s.sprite,sf:s.sprite_frames,sfps:s.sprite_fps||12,scene:old[i]&&old[i].text_en===s.text_en?old[i].scene:"",action:old[i]?old[i].action:"",
    marks:w&&w.length===s.text_en.split(/\s+/).length?w.map(x=>+x.t):null}});
  story=prep({id:man.id||"story",title_en:man.title_en||"Story",level:man.level||"",segments:segs,base});
  const ea=man.generic_error&&man.generic_error.audio;if(ea){bamUrl=files[ea.split("/").pop()]||(base!=null?base+ea:null)}}
