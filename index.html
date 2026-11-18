@@ -238,12 +238,13 @@ function onWords(toks,finalLen){let cp=0;while(cp<toks.length&&cp<prevToks.lengt
   if(r===0)break;if(r===-1){consumed=toks.length;return}i+=r;consumed=i}}
 
 // ---------- speech ----------
+const IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let rec=null,want=false,lastEv=0;
 let soundAt=0;
 setInterval(()=>{const now=Date.now();const speaking=soundAt>lastEv;
- if(want&&rec&&!freeze&&!finished&&now-lastEv>10000){L("watchdog: no words for 10s -> restart mic");lastEv=Date.now();const old=rec;rec=null;old.onend=null;old.onresult=null;try{old.abort()}catch(e){}setTimeout(()=>{if(want&&!rec)startRec()},300)}},1000);
+ if(want&&rec&&!freeze&&!finished&&now-lastEv>(IOS?8000:10000)){L("watchdog: no words -> restart mic");lastEv=Date.now();const old=rec;rec=null;old.onend=null;old.onresult=null;try{old.abort()}catch(e){}setTimeout(()=>{if(want&&!rec)startRec()},300)}},1000);
 function startRec(){if(!SR){setMsg("Speech recognition is not available in this browser. On iPhone use Safari.");return}
- rec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=1;consumed=0;lastLen=0;prevToks=[];lastEv=Date.now();L("mic: starting");
+ rec=new SR();rec.lang="en-US";rec.continuous=!IOS;rec.interimResults=true;rec.maxAlternatives=1;consumed=0;lastLen=0;prevToks=[];lastEv=Date.now();L("mic: starting");
  rec.onsoundstart=()=>{soundAt=Date.now();L("mic: sound")};rec.onspeechstart=()=>{soundAt=Date.now();L("mic: speech")};rec.onspeechend=()=>L("mic: speech end");
  rec.onresult=e=>{let txt="",fin="";for(let i=0;i<e.results.length;i++){const t=e.results[i][0].transcript;txt+=" "+t;if(e.results[i].isFinal)fin+=" "+t}
   const toks=txt.split(/\s+/).map(norm).filter(Boolean),fl=fin.split(/\s+/).map(norm).filter(Boolean).length;
@@ -252,7 +253,7 @@ function startRec(){if(!SR){setMsg("Speech recognition is not available in this 
   else if(e.error==="network")setMsg("No internet connection — speech recognition needs it.");
   else if(e.error!=="no-speech"&&e.error!=="aborted")setMsg("Speech error: "+e.error)};
  rec.onstart=()=>{lastEv=Date.now();L("mic: listening");setMsg("");ui()};
- rec.onend=()=>{L("mic: ended"+(want?" -> restart":""));rec=null;if(want)setTimeout(()=>{if(want&&!rec)startRec()},200);else ui()};
+ rec.onend=()=>{L("mic: ended"+(want?" -> restart":""));rec=null;if(want)setTimeout(()=>{if(want&&!rec)startRec()},IOS?50:200);else ui()};
  try{rec.start()}catch(e){setMsg("Could not start the microphone.")}}
 function stopRec(){want=false;if(rec){try{rec.abort()}catch(e){}}ui()}
 function ui(){const on=want&&!finished;$("start").textContent=on?"Listening…":"Start";$("start").classList.toggle("live",on);
@@ -311,7 +312,7 @@ async function autoLoad(){for(const dir of ["story-001-the-house-in-the-forest/"
 autoLoad();
 
 $("heard").style.display=S.heard==="1"?"":"none";$("dbg").style.display=S.dbg==="1"?"":"none";
-L("page loaded, "+navigator.userAgent.replace(/^.*?\(/,"(").slice(0,60));
+L("mode: "+(IOS?"iPhone (phrase by phrase)":"continuous"));L("page loaded, "+navigator.userAgent.replace(/^.*?\(/,"(").slice(0,60));
 renderText();showSeg(0);ui();askResume();
 if(!SR)setMsg("Speech recognition is not available in this browser. On iPhone use Safari.");
 }
