@@ -47,6 +47,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:17px/1
 .w.ok{color:var(--read)}
 .w.next{background:var(--cur)}
 .heard{position:absolute;left:0;right:0;bottom:0;padding:4px 18px;font-size:13px;color:var(--soft);background:linear-gradient(transparent,var(--bg) 40%);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dbg{position:absolute;left:8px;right:8px;bottom:22px;max-height:48%;margin:0;padding:6px 8px;font:11px/1.35 ui-monospace,Menlo,monospace;background:rgba(255,255,255,.92);border:1px solid #d9cfb8;border-radius:8px;white-space:pre-wrap;overflow:hidden;color:#333;pointer-events:none}
 .prog{flex:none;padding:6px 18px 0;display:flex;align-items:center;gap:10px;font-size:14px;color:var(--soft)}
 .prog .pb{flex:1;height:6px;background:var(--bar);border-radius:3px;overflow:hidden}.prog .pb i{display:block;height:100%;width:0;background:var(--read);transition:width .3s}
 .msg{flex:none;min-height:0;padding:0 18px;font-size:14px;color:var(--red)}
@@ -84,7 +85,7 @@ input[type=file]{font-size:16px;max-width:100%}
     <div class="micoff" id="micoff">Microphone is off</div>
     <div class="end" id="end"><h2>The End</h2><p id="endtxt"></p><button class="pri" id="again">Read Again</button></div>
   </div>
-  <div class="textwrap"><div class="text mode-one" id="text"></div><div class="heard" id="heard"></div></div>
+  <div class="textwrap"><div class="text mode-one" id="text"></div><div class="heard" id="heard"></div><pre class="dbg" id="dbg"></pre></div>
   <div class="prog"><span id="pn">1 of 12</span><span class="pb"><i id="pbar"></i></span></div>
   <div class="msg" id="msg"></div>
   <div class="ctr">
@@ -102,6 +103,9 @@ input[type=file]{font-size:16px;max-width:100%}
   <div class="opt"><label>Text view</label><div class="seg" data-k="mode"><button data-v="one">One sentence</button><button data-v="scroll">Whole story, scrolling</button></div></div>
   <div class="opt"><label>Read text (scrolling view)</label><div class="seg" data-k="dim"><button data-v="1">Fade</button><button data-v="0">Keep</button></div></div>
   <div class="opt"><label>Show what the phone heard</label><div class="seg" data-k="heard"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
+  <div class="opt"><label>Debug log</label><div class="seg" data-k="dbg"><button data-v="1">On</button><button data-v="0">Off</button></div>
+    <button id="copylog" style="width:100%;margin-top:8px">Copy log</button><p class="note" id="copied"></p></div>
+  <div class="opt"><label>Video</label><div class="seg" data-k="video"><button data-v="1">On</button><button data-v="0">Off (test mic without video)</button></div></div>
   <div class="opt"><label>Error sound “bam”</label><div class="seg" data-k="bam"><button data-v="1">On</button><button data-v="0">Off</button></div>
     <p class="note">Test only: on iPhone, playing sound may stop the microphone. Needs error-bam.mp3 from a loaded package.</p></div>
   <button class="pri" id="setClose" style="width:100%">Done</button>
@@ -139,6 +143,10 @@ const DEMO={id:"story-001",title_en:"The House in the Forest",level:"A1",segment
  ["It was only a dream.",["dream"],"He smiles. It was only a dream.","A dream"]
 ].map((s,i)=>({id:"S"+String(i+1).padStart(2,"0"),text_en:s[0],trigger_words:s[1],scene:s[2],action:s[3]}))};
 
+// ---------- debug log ----------
+const LOG=[];const t0=Date.now();
+function L(m){const line=((Date.now()-t0)/1000).toFixed(1)+"s "+m;LOG.push(line);if(LOG.length>400)LOG.shift();
+ const d=document.getElementById("dbg");if(d&&d.style.display!=="none"){d.textContent=LOG.slice(-9).join("\n")}}
 // ---------- word tools ----------
 const norm=w=>w.toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9']/g,"");
 const FUNC=new Set(["a","an","the","and","is","it","to","on","in","of","he","she","there"]);
@@ -151,7 +159,7 @@ function sim(a,b){if(a===b)return 1;const r=ratio(a,b),pa=phon(a),pb=phon(b);ret
 const TH={easy:.6,normal:.72,strict:.88},NEAR=.55;
 
 // ---------- state ----------
-const S={strict:"normal",mode:"one",dim:"1",heard:"1",bam:"0"};
+const S={strict:"normal",mode:"one",dim:"1",heard:"1",bam:"0",dbg:"1",video:"1"};
 try{Object.assign(S,JSON.parse(localStorage.getItem("ra_set")||"{}"))}catch(e){}
 let story,files={},bamUrl=null;
 let sent=0,pos=0,errs=0,errRow=0,started=false,finished=false,freeze=false;
@@ -175,14 +183,16 @@ function showSeg(i){vidSeg=i;cur=0;target=0;const g=story.segments[i];if(!g)retu
  $("sid").textContent=g.id;$("scene").textContent=g.scene||g.text_en;$("act").textContent=g.action||"";$("act").classList.remove("on");
  $("tl").innerHTML=g.marks.map(m=>`<i style="left:${100*m/g.dur}%"></i>`).join("")+`<b id="dot" style="left:0"></b>`;
  const v=$("vid"),f=g.video&&(files[g.video.split("/").pop()]||(story.base!=null?story.base+g.video:null));
- if(f){v.hidden=false;$("sketch").style.visibility="hidden";if(v.dataset.src!==f){v.src=f;v.dataset.src=f}v.pause();try{v.currentTime=0}catch(e){}}
+ if(f&&S.video==="1"){v.hidden=false;$("sketch").style.visibility="hidden";if(v.dataset.src!==f){if(!f.startsWith("blob:"))v.poster=f.replace(/\.mp4$/,".jpg");v.src=f;v.dataset.src=f;v.load();L("video load "+g.id)}
+  v.pause();try{v.currentTime=0}catch(e){}
+  v.onloadeddata=()=>{if(vidSeg===i&&cur===0){try{v.currentTime=0}catch(e){}}}}
  else{v.hidden=true;v.pause();$("sketch").style.visibility="visible"}}
 function setMsg(t){$("msg").textContent=t||""}
 
 // ---------- video clock ----------
 let last=performance.now();
 function tick(now){const dt=Math.min(.1,(now-last)/1000);last=now;const g=story.segments[vidSeg],v=$("vid");
- if(g){if(!v.hidden){if(v.currentTime<target-.04&&v.paused&&!freeze)v.play().catch(()=>{});if(v.currentTime>=target-.02&&!v.paused)v.pause();cur=v.currentTime;
+ if(g){if(!v.hidden){if(v.currentTime<target-.04&&v.paused&&!freeze){v.play().then(()=>L(`video play ${g.id} to ${target.toFixed(1)}s`)).catch(x=>L("video play failed: "+x.name))}if(v.currentTime>=target-.02&&!v.paused)v.pause();cur=v.currentTime;
    if(v.ended||cur>=g.dur-.05)cur=Math.max(cur,g.dur)}
   else{if(cur<target&&!freeze)cur=Math.min(target,cur+dt*(target-cur>1?2:1));const d=$("dot");if(d)d.style.left=(100*cur/g.dur)+"%"}
   const ti=g.words.findIndex((w,k)=>g.trig.includes(w)&&g.marks[k]<=cur+.01&&cur>0);if(ti>=0)$("act").classList.add("on");
@@ -193,41 +203,43 @@ function goWord(){const g=story.segments[sent];if(vidSeg!==sent)showSeg(sent);ta
 
 // ---------- reading logic ----------
 function accept(n){pos+=n;const g=story.segments[sent];goWord();
- if(pos>=g.words.length){target=g.dur;errRow=0;sent++;pos=0;save();
+ if(pos>=g.words.length){L(`sentence ${sent+1} done`);target=g.dur;errRow=0;sent++;pos=0;save();
   if(sent>=story.segments.length){finish();return}}
  paint()}
 function mistake(){errs++;errRow++;pos=0;freeze=true;showSeg(sent);$("cross").classList.add("on");
  if(S.bam==="1"&&bamUrl){try{new Audio(bamUrl).play().catch(()=>{})}catch(e){}}
  setTimeout(()=>{$("cross").classList.remove("on");freeze=false;consumed=lastLen;paint()},1000);paint()}
 function judge(tok,next,isLast){const g=story.segments[sent],exp=g.words[pos],th=TH[S.strict];
- if(!exp)return 1;
- if(sim(tok,exp)>=th){accept(1);return 1}
- if(next&&sim(tok+next,exp)>=th){accept(1);return 2}
- if(isLast)return 0; // wait: last word may still change
- if(exp.startsWith(tok)&&!next)return 0;
+ if(!exp)return 1;const sc=sim(tok,exp).toFixed(2),tag=`S${sent+1}w${pos+1} "${tok}"~"${exp}" ${sc}`;
+ if(sim(tok,exp)>=th){L(tag+" OK");accept(1);return 1}
+ if(next&&sim(tok+next,exp)>=th){L(tag+" OK(joined)");accept(1);return 2}
+ if(isLast){L(tag+" wait");return 0} // wait: last word may still change
+ if(exp.startsWith(tok)&&!next){L(tag+" wait(part)");return 0}
  const n1=g.words[pos+1];
- if(n1&&sim(tok,n1)>=th){if(S.strict==="easy"&&FUNC.has(exp)){accept(2);return 1}mistake();return -1}
- if(pos>0&&sim(tok,g.words[pos-1])>=th)return 1;  // repeated word: ignore
- if(sim(tok,exp)>=NEAR){mistake();return -1}
- return 1; // not like the text: ignore
+ if(n1&&sim(tok,n1)>=th){if(S.strict==="easy"&&FUNC.has(exp)){L(tag+" skip forgiven");accept(2);return 1}L(tag+" ERROR skipped word");mistake();return -1}
+ if(pos>0&&sim(tok,g.words[pos-1])>=th){L(tag+" repeat, ignored");return 1}
+ if(sim(tok,exp)>=NEAR){L(tag+" ERROR wrong word");mistake();return -1}
+ L(tag+" ignored (not like text)");return 1;
 }
-let consumed=0,lastLen=0;
-function onWords(toks,finalLen){lastLen=toks.length;if(freeze||finished){consumed=toks.length;return}
+let consumed=0,lastLen=0,prevToks=[];
+function onWords(toks,finalLen){let cp=0;while(cp<toks.length&&cp<prevToks.length&&toks[cp]===prevToks[cp])cp++;
+ if(cp<consumed&&(cp===0||toks.length<consumed)){L(`transcript restarted (had ${consumed}, now ${toks.length}) -> reading new words`);consumed=cp}
+ prevToks=toks;lastLen=toks.length;if(freeze||finished){consumed=toks.length;return}
  let i=consumed;while(i<toks.length&&!finished){const stable=i<finalLen||i<toks.length-1;const r=judge(toks[i],toks[i+1],!stable);
   if(r===0)break;if(r===-1){consumed=toks.length;return}i+=r;consumed=i}}
 
 // ---------- speech ----------
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let rec=null,want=false;
 function startRec(){if(!SR){setMsg("Speech recognition is not available in this browser. On iPhone use Safari.");return}
- rec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=1;consumed=0;lastLen=0;
+ rec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=1;consumed=0;lastLen=0;prevToks=[];L("mic: starting");
  rec.onresult=e=>{let txt="",fin="";for(let i=0;i<e.results.length;i++){const t=e.results[i][0].transcript;txt+=" "+t;if(e.results[i].isFinal)fin+=" "+t}
   const toks=txt.split(/\s+/).map(norm).filter(Boolean),fl=fin.split(/\s+/).map(norm).filter(Boolean).length;
-  if(S.heard==="1")$("heard").textContent="Heard: "+toks.slice(-8).join(" ");onWords(toks,fl)};
- rec.onerror=e=>{if(e.error==="not-allowed"||e.error==="service-not-allowed"){want=false;setMsg("Microphone access is blocked. Allow it in Settings and reload.");ui()}
+  if(S.heard==="1")$("heard").textContent="Heard: "+toks.slice(-8).join(" ");L(`heard[${toks.length},final ${fl}]: ${toks.slice(-6).join(" ")}`);onWords(toks,fl)};
+ rec.onerror=e=>{L("mic error: "+e.error);if(e.error==="not-allowed"||e.error==="service-not-allowed"){want=false;setMsg("Microphone access is blocked. Allow it in Settings and reload.");ui()}
   else if(e.error==="network")setMsg("No internet connection — speech recognition needs it.");
   else if(e.error!=="no-speech"&&e.error!=="aborted")setMsg("Speech error: "+e.error)};
- rec.onstart=()=>{setMsg("");ui()};
- rec.onend=()=>{rec=null;if(want)setTimeout(()=>{if(want&&!rec)startRec()},200);else ui()};
+ rec.onstart=()=>{L("mic: listening");setMsg("");ui()};
+ rec.onend=()=>{L("mic: ended"+(want?" -> restart":""));rec=null;if(want)setTimeout(()=>{if(want&&!rec)startRec()},200);else ui()};
  try{rec.start()}catch(e){setMsg("Could not start the microphone.")}}
 function stopRec(){want=false;if(rec){try{rec.abort()}catch(e){}}ui()}
 function ui(){const on=want&&!finished;$("start").textContent=on?"Listening…":"Start";$("start").classList.toggle("live",on);
@@ -238,7 +250,7 @@ function ui(){const on=want&&!finished;$("start").textContent=on?"Listening…":
 function begin(){if(finished)return;started=true;want=true;if(vidSeg!==sent)showSeg(sent);startRec();ui();paint()}
 function finish(){finished=true;stopRec();target=story.segments[vidSeg].dur;
  setTimeout(()=>{$("endtxt").textContent=`Mistakes: ${errs}`;$("end").classList.add("on")},1500);save(true);paint()}
-function reset(from){stopRec();finished=false;started=false;sent=from||0;pos=0;errs=0;errRow=0;$("end").classList.remove("on");showSeg(sent);$("heard").textContent="";paint();ui()}
+function reset(from){L("start over from sentence "+((from||0)+1));const v=$("vid");v.removeAttribute("data-src");stopRec();finished=false;started=false;sent=from||0;pos=0;errs=0;errRow=0;$("end").classList.remove("on");showSeg(sent);$("heard").textContent="";paint();ui()}
 const key=()=>"ra_pos_"+story.id;
 function save(done){try{localStorage.setItem(key(),JSON.stringify(done?{sent:0}:{sent,errs}))}catch(e){}}
 function askResume(){let s=null;try{s=JSON.parse(localStorage.getItem(key())||"null")}catch(e){}
@@ -254,7 +266,8 @@ $("skip").onclick=()=>{errRow=0;pos=story.segments[sent].words.length;target=sto
 // ---------- settings ----------
 function syncSeg(){document.querySelectorAll(".seg[data-k]").forEach(s=>[...s.children].forEach(b=>b.classList.toggle("sel",S[s.dataset.k]===b.dataset.v)))}
 document.querySelectorAll(".seg[data-k]").forEach(s=>s.onclick=e=>{const b=e.target.closest("button");if(!b)return;S[s.dataset.k]=b.dataset.v;
- try{localStorage.setItem("ra_set",JSON.stringify(S))}catch(x){}syncSeg();renderText();$("heard").style.display=S.heard==="1"?"":"none"});
+ try{localStorage.setItem("ra_set",JSON.stringify(S))}catch(x){}syncSeg();renderText();$("heard").style.display=S.heard==="1"?"":"none";$("dbg").style.display=S.dbg==="1"?"":"none";showSeg(vidSeg)});
+$("copylog").onclick=()=>{const t=LOG.join("\n");navigator.clipboard.writeText(t).then(()=>$("copied").textContent="Copied "+LOG.length+" lines. Paste it into the chat with Claude.").catch(()=>{$("copied").textContent="Copy failed"})};
 $("gear").onclick=()=>{syncSeg();$("setSheet").classList.add("on")};$("setClose").onclick=()=>$("setSheet").classList.remove("on");
 
 // ---------- stories & packages ----------
@@ -284,7 +297,8 @@ async function autoLoad(){for(const dir of ["story-001-the-house-in-the-forest/"
   useManifest(man,dir);renderText();reset(0);askResume();return}catch(e){}}}
 autoLoad();
 
-$("heard").style.display=S.heard==="1"?"":"none";
+$("heard").style.display=S.heard==="1"?"":"none";$("dbg").style.display=S.dbg==="1"?"":"none";
+L("page loaded, "+navigator.userAgent.replace(/^.*?\(/,"(").slice(0,60));
 renderText();showSeg(0);ui();askResume();
 if(!SR)setMsg("Speech recognition is not available in this browser. On iPhone use Safari.");
 }
