@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Read-Along Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Patrick+Hand&display=swap" rel="stylesheet">
+<style>
+/* VOICE: calm reading tool, nothing distracting from the words
+   IDEA: a sketchbook page above, a teleprompter below
+   PICTURE: the 16:9 cartoon frame (placeholder sketch until real video arrives)
+   COLOUR: warm paper, graphite ink, blue for read words, red only for the cross
+   LAYOUT: video top, text fills the middle, controls pinned at the bottom */
+:root{--paper:#f6f0e2;--ink:#2b2a27;--soft:#8a8578;--read:#1f5fbf;--cur:#ffe27a;--bg:#fbf8f1;--bar:#efe8d6;--red:#d81e1e}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:17px/1.4 "Atkinson Hyperlegible",system-ui,sans-serif;overflow:hidden}
+.app{display:flex;flex-direction:column;height:100dvh;padding-top:env(safe-area-inset-top);max-width:820px;margin:0 auto}
+.stage{position:relative;aspect-ratio:16/9;background:var(--paper);border-bottom:2px solid #d9cfb8;overflow:hidden;flex:none}
+.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+.sketch{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:4% 6%;font-family:"Patrick Hand",cursive;
+ background:repeating-linear-gradient(0deg,transparent 0 27px,#e7dcc3 27px 28px),var(--paper)}
+.sketch .sid{position:absolute;top:8px;left:12px;font-size:15px;color:var(--soft)}
+.sketch .ph{position:absolute;top:8px;right:12px;font-size:13px;color:var(--soft)}
+.sketch .scene{font-size:clamp(18px,4.6vw,30px);line-height:1.2;max-width:24ch}
+.sketch .act{margin-top:10px;font-size:clamp(26px,8vw,52px);color:#9a5a12;opacity:0;transform:scale(.6) rotate(-4deg);transition:.35s}
+.sketch .act.on{opacity:1;transform:scale(1) rotate(-4deg)}
+.tl{position:absolute;left:6%;right:6%;bottom:9%;height:3px;background:#cfc3a6;border-radius:2px}
+.tl i{position:absolute;top:-4px;width:2px;height:11px;background:#a99d80}
+.tl b{position:absolute;top:-7px;width:16px;height:16px;margin-left:-8px;border-radius:50%;background:var(--ink)}
+.cross{position:absolute;inset:0;display:none;z-index:5;pointer-events:none}
+.cross.on{display:block;animation:pop .15s ease-out}
+@keyframes pop{from{transform:scale(1.25);opacity:.3}to{transform:none;opacity:1}}
+.micoff{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(30,28,24,.55);color:#fff;font-weight:700;font-size:20px;z-index:4}
+.micoff.on{display:flex}
+.end{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(246,240,226,.93);z-index:6;font-family:"Patrick Hand",cursive}
+.end.on{display:flex}.end h2{font-size:clamp(40px,11vw,72px);margin:0}.end p{margin:4px 0 14px;font-family:"Atkinson Hyperlegible",sans-serif}
+.textwrap{position:relative;flex:1;overflow:hidden}
+.text{position:absolute;inset:0;overflow:hidden;padding:18px 18px 0}
+.sent{font-size:clamp(26px,7vw,40px);line-height:1.35;margin:0 0 .5em;color:var(--ink);transition:color .3s}
+.mode-one .sent:not(.active){display:none}
+.mode-one .sent.active{margin-top:4px}
+.mode-scroll .sent:not(.active){color:var(--soft)}
+.mode-scroll.dim .sent.done{opacity:.35}
+.sent.big{font-size:clamp(32px,9vw,52px)}
+.w{border-radius:6px;padding:0 2px;transition:background .2s,color .2s}
+.w.ok{color:var(--read)}
+.w.next{background:var(--cur)}
+.heard{position:absolute;left:0;right:0;bottom:0;padding:4px 18px;font-size:13px;color:var(--soft);background:linear-gradient(transparent,var(--bg) 40%);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prog{flex:none;padding:6px 18px 0;display:flex;align-items:center;gap:10px;font-size:14px;color:var(--soft)}
+.prog .pb{flex:1;height:6px;background:var(--bar);border-radius:3px;overflow:hidden}.prog .pb i{display:block;height:100%;width:0;background:var(--read);transition:width .3s}
+.msg{flex:none;min-height:0;padding:0 18px;font-size:14px;color:var(--red)}
+.ctr{flex:none;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--bg)}
+button{font:700 16px "Atkinson Hyperlegible",sans-serif;min-height:46px;border-radius:12px;border:2px solid var(--ink);background:#fff;color:var(--ink);padding:6px 10px;cursor:pointer}
+button:focus-visible{outline:3px solid var(--read);outline-offset:2px}
+button.pri{background:var(--ink);color:#fff}
+button.live{background:var(--read);border-color:var(--read);color:#fff}
+button:disabled{opacity:.4}
+.row3{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr auto;gap:8px}
+#skip{grid-column:1/-1;display:none;background:var(--cur);border-color:#b8941a}
+#skip.on{display:block}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:flex-end;justify-content:center;z-index:20}
+.sheet.on{display:flex}
+.panel{background:var(--bg);width:100%;max-width:820px;border-radius:18px 18px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));max-height:85dvh;overflow:auto}
+.panel h3{margin:0 0 12px;font-size:20px}
+.opt{margin:0 0 14px}.opt label{display:block;font-weight:700;margin-bottom:6px}
+.seg{display:flex;gap:6px;flex-wrap:wrap}.seg button{flex:1;min-width:90px}
+.seg button.sel{background:var(--ink);color:#fff}
+.note{font-size:14px;color:var(--soft);margin:4px 0 0}
+.story{display:flex;justify-content:space-between;align-items:center;padding:12px;border:2px solid var(--ink);border-radius:12px;margin-bottom:10px;background:#fff}
+input[type=file]{font-size:16px;max-width:100%}
+.ask{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:30;padding:20px}
+.ask.on{display:flex}.ask .panel{border-radius:18px;max-width:420px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="stage" id="stage">
+    <video id="vid" muted playsinline preload="auto" hidden></video>
+    <div class="sketch" id="sketch"><span class="sid" id="sid">S01</span><span class="ph">placeholder — no video yet</span>
+      <div class="scene" id="scene"></div><div class="act" id="act"></div>
+      <div class="tl" id="tl"></div></div>
+    <svg class="cross" id="cross" viewBox="0 0 160 90" preserveAspectRatio="none"><path d="M20 8 L140 82 M140 8 L20 82" stroke="#d81e1e" stroke-width="13" stroke-linecap="round"/></svg>
+    <div class="micoff" id="micoff">Microphone is off</div>
+    <div class="end" id="end"><h2>The End</h2><p id="endtxt"></p><button class="pri" id="again">Read Again</button></div>
+  </div>
+  <div class="textwrap"><div class="text mode-one" id="text"></div><div class="heard" id="heard"></div></div>
+  <div class="prog"><span id="pn">1 of 12</span><span class="pb"><i id="pbar"></i></span></div>
+  <div class="msg" id="msg"></div>
+  <div class="ctr">
+    <button id="skip">Skip Sentence</button>
+    <button class="pri" id="start">Start</button>
+    <button id="pause" disabled>Pause Microphone</button>
+    <div class="row3"><button id="over">Start Over</button><button id="choose">Choose a Story</button><button id="gear" aria-label="Settings">Settings</button></div>
+  </div>
+</div>
+
+<div class="sheet" id="setSheet"><div class="panel">
+  <h3>Settings</h3>
+  <div class="opt"><label>Strictness</label><div class="seg" data-k="strict"><button data-v="easy">Easy</button><button data-v="normal">Normal</button><button data-v="strict">Strict</button></div>
+    <p class="note">Easy forgives small words (a, the, and…) that the phone did not catch.</p></div>
+  <div class="opt"><label>Text view</label><div class="seg" data-k="mode"><button data-v="one">One sentence</button><button data-v="scroll">Whole story, scrolling</button></div></div>
+  <div class="opt"><label>Read text (scrolling view)</label><div class="seg" data-k="dim"><button data-v="1">Fade</button><button data-v="0">Keep</button></div></div>
+  <div class="opt"><label>Show what the phone heard</label><div class="seg" data-k="heard"><button data-v="1">On</button><button data-v="0">Off</button></div></div>
+  <div class="opt"><label>Error sound “bam”</label><div class="seg" data-k="bam"><button data-v="1">On</button><button data-v="0">Off</button></div>
+    <p class="note">Test only: on iPhone, playing sound may stop the microphone. Needs error-bam.mp3 from a loaded package.</p></div>
+  <button class="pri" id="setClose" style="width:100%">Done</button>
+</div></div>
+
+<div class="sheet" id="storySheet"><div class="panel">
+  <h3>Choose a Story</h3>
+  <div id="stories"></div>
+  <div class="opt"><label>Load story package files</label>
+    <input type="file" id="pkg" multiple accept=".json,.mp4,.mp3,.png,video/*,audio/*,image/*">
+    <p class="note">Select manifest.json and the S01–S12 .mp4 files (and error-bam.mp3 if you have it). Files stay on this phone.</p></div>
+  <button class="pri" id="storyClose" style="width:100%">Close</button>
+</div></div>
+
+<div class="ask" id="ask"><div class="panel"><h3 id="askT"></h3>
+  <div class="seg"><button class="pri" id="askC">Continue</button><button id="askS">Start Over</button></div></div></div>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const DEMO={id:"story-001",title_en:"The House in the Forest",level:"A1",segments:[
+ ["One day, a boy goes out to play.",["goes","play"],"Morning. The boy leaves his house to play.","Off to play!"],
+ ["Far away, he sees a forest.",["sees","forest"],"He stops and looks far away: a dark line of forest.","A forest!"],
+ ["He walks to the forest and goes in.",["walks"],"He walks along the path into the trees.","Into the forest"],
+ ["In the forest, he sees a small house.",["sees","house"],"Between the trees there is a small wooden house.","A house!"],
+ ["He looks through the window and sees no one.",["looks","window"],"He looks through the window. Nobody inside.","No one…"],
+ ["He walks to the door.",["walks","door"],"He walks around the corner to the door.","The door"],
+ ["He slowly opens the door.",["opens"],"His hand reaches for the handle. The door creaks open.","The door opens!"],
+ ["He peeks inside.",["peeks"],"He leans in. Only his head is inside.","Peek!"],
+ ["Inside, a fire burns in the fireplace.",["fire","fireplace"],"A warm fire burns in the fireplace.","Fire!"],
+ ["He sees a table, a chair and a bed.",["sees"],"A table, a chair and a small bed.","Table, chair, bed"],
+ ["He goes inside.",["goes"],"Now he steps over the threshold.","Inside!"],
+ ["He sits on the bed and falls asleep.",["sits","asleep"],"He sits on the bed, lies down and falls asleep.","Zzz…"],
+ ["When he wakes up, he is at home.",["wakes"],"Morning. His own room, his own bed.","At home!"],
+ ["It was only a dream.",["dream"],"He smiles. It was only a dream.","A dream"]
+].map((s,i)=>({id:"S"+String(i+1).padStart(2,"0"),text_en:s[0],trigger_words:s[1],scene:s[2],action:s[3]}))};
+
+// ---------- word tools ----------
+const norm=w=>w.toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9']/g,"");
+const FUNC=new Set(["a","an","the","and","is","it","to","on","in","of","he","she","there"]);
+function lev(a,b){const m=a.length,n=b.length;if(!m)return n;if(!n)return m;let p=[...Array(n+1).keys()];for(let i=1;i<=m;i++){let c=[i];for(let j=1;j<=n;j++)c[j]=Math.min(p[j]+1,c[j-1]+1,p[j-1]+(a[i-1]===b[j-1]?0:1));p=c}return p[n]}
+const ratio=(a,b)=>1-lev(a,b)/Math.max(a.length,b.length,1);
+function phon(w){let s=w.replace(/'/g,"").replace(/ph/g,"f").replace(/ck/g,"k").replace(/sh|ch/g,"s").replace(/th/g,"t").replace(/wh/g,"w").replace(/^kn/,"n").replace(/gh/g,"")
+ .replace(/c(?=[eiy])/g,"s").replace(/[cq]/g,"k").replace(/x/g,"ks").replace(/z/g,"s").replace(/v/g,"f").replace(/d/g,"t").replace(/b/g,"p").replace(/g/g,"k");
+ const f=s[0]||"";return (f+s.slice(1).replace(/[aeiouy]/g,"")).replace(/(.)\1+/g,"$1")}
+function sim(a,b){if(a===b)return 1;const r=ratio(a,b),pa=phon(a),pb=phon(b);return Math.max(r,pa&&pb?.85*ratio(pa,pb):0)}
+const TH={easy:.6,normal:.72,strict:.88},NEAR=.55;
+
+// ---------- state ----------
+const S={strict:"normal",mode:"one",dim:"1",heard:"1",bam:"0"};
+try{Object.assign(S,JSON.parse(localStorage.getItem("ra_set")||"{}"))}catch(e){}
+let story,files={},bamUrl=null;
+let sent=0,pos=0,errs=0,errRow=0,started=false,finished=false,freeze=false;
+let vidSeg=0,cur=0,target=0;
+function prep(st){st.segments.forEach((g,i)=>{g.disp=g.text_en.split(/\s+/);g.words=g.disp.map(norm);
+ if(!g.marks)g.marks=g.disp.map((_,k)=>+(k*0.55).toFixed(2));g.dur=g.marks[g.marks.length-1]+1.2;g.trig=(g.trigger_words||[]).map(norm)});return st}
+story=prep(DEMO);
+
+// ---------- render ----------
+function renderText(){const t=$("text");t.className="text mode-"+S.mode+(S.dim==="1"?" dim":"");
+ t.innerHTML=story.segments.map((g,i)=>`<p class="sent" data-i="${i}">${g.disp.map((w,k)=>`<span class="w" data-k="${k}">${w}</span>`).join(" ")}</p>`).join("");paint()}
+function paint(){const ps=$("text").children;
+ for(let i=0;i<ps.length;i++){const p=ps[i];p.classList.toggle("active",i===sent&&!finished);p.classList.toggle("done",i<sent||finished);p.classList.toggle("big",i===sent&&errRow>=3);
+  [...p.children].forEach((w,k)=>{w.classList.toggle("ok",i<sent||(i===sent&&k<pos)||finished);w.classList.toggle("next",i===sent&&k===pos&&started&&!finished)})}
+ const n=story.segments.length;$("pn").textContent=`${Math.min(sent+1,n)} of ${n}`;$("pbar").style.width=(100*(finished?n:sent)/n)+"%";
+ $("skip").classList.toggle("on",errRow>=3&&!finished);scrollText()}
+function scrollText(){const t=$("text"),p=t.children[sent];if(!p)return;
+ if(S.mode==="one"){t.scrollTop=0;return}
+ const w=p.querySelector(".w.next")||p,off=w.offsetTop-t.clientHeight*0.3;t.scrollTo({top:Math.max(0,off),behavior:"smooth"})}
+function showSeg(i){vidSeg=i;cur=0;target=0;const g=story.segments[i];if(!g)return;
+ $("sid").textContent=g.id;$("scene").textContent=g.scene||g.text_en;$("act").textContent=g.action||"";$("act").classList.remove("on");
+ $("tl").innerHTML=g.marks.map(m=>`<i style="left:${100*m/g.dur}%"></i>`).join("")+`<b id="dot" style="left:0"></b>`;
+ const v=$("vid"),f=g.video&&(files[g.video.split("/").pop()]||(story.base!=null?story.base+g.video:null));
+ if(f){v.hidden=false;$("sketch").style.visibility="hidden";if(v.dataset.src!==f){v.src=f;v.dataset.src=f}v.pause();try{v.currentTime=0}catch(e){}}
+ else{v.hidden=true;v.pause();$("sketch").style.visibility="visible"}}
+function setMsg(t){$("msg").textContent=t||""}
+
+// ---------- video clock ----------
+let last=performance.now();
+function tick(now){const dt=Math.min(.1,(now-last)/1000);last=now;const g=story.segments[vidSeg],v=$("vid");
+ if(g){if(!v.hidden){if(v.currentTime<target-.04&&v.paused&&!freeze)v.play().catch(()=>{});if(v.currentTime>=target-.02&&!v.paused)v.pause();cur=v.currentTime;
+   if(v.ended||cur>=g.dur-.05)cur=Math.max(cur,g.dur)}
+  else{if(cur<target&&!freeze)cur=Math.min(target,cur+dt*(target-cur>1?2:1));const d=$("dot");if(d)d.style.left=(100*cur/g.dur)+"%"}
+  const ti=g.words.findIndex((w,k)=>g.trig.includes(w)&&g.marks[k]<=cur+.01&&cur>0);if(ti>=0)$("act").classList.add("on");
+  if(vidSeg<sent&&cur>=Math.min(target,g.dur)-.02&&target>=g.dur-.01&&!finished)showSeg(sent)}
+ requestAnimationFrame(tick)}
+requestAnimationFrame(tick);
+function goWord(){const g=story.segments[sent];if(vidSeg!==sent)showSeg(sent);target=g.marks[Math.min(pos,g.marks.length)-1]??0;if(pos>=g.words.length)target=g.dur}
+
+// ---------- reading logic ----------
+function accept(n){pos+=n;const g=story.segments[sent];goWord();
+ if(pos>=g.words.length){target=g.dur;errRow=0;sent++;pos=0;save();
+  if(sent>=story.segments.length){finish();return}}
+ paint()}
+function mistake(){errs++;errRow++;pos=0;freeze=true;showSeg(sent);$("cross").classList.add("on");
+ if(S.bam==="1"&&bamUrl){try{new Audio(bamUrl).play().catch(()=>{})}catch(e){}}
+ setTimeout(()=>{$("cross").classList.remove("on");freeze=false;consumed=lastLen;paint()},1000);paint()}
+function judge(tok,next,isLast){const g=story.segments[sent],exp=g.words[pos],th=TH[S.strict];
+ if(!exp)return 1;
+ if(sim(tok,exp)>=th){accept(1);return 1}
+ if(next&&sim(tok+next,exp)>=th){accept(1);return 2}
+ if(isLast)return 0; // wait: last word may still change
+ if(exp.startsWith(tok)&&!next)return 0;
+ const n1=g.words[pos+1];
+ if(n1&&sim(tok,n1)>=th){if(S.strict==="easy"&&FUNC.has(exp)){accept(2);return 1}mistake();return -1}
+ if(pos>0&&sim(tok,g.words[pos-1])>=th)return 1;  // repeated word: ignore
+ if(sim(tok,exp)>=NEAR){mistake();return -1}
+ return 1; // not like the text: ignore
+}
+let consumed=0,lastLen=0;
+function onWords(toks,finalLen){lastLen=toks.length;if(freeze||finished){consumed=toks.length;return}
+ let i=consumed;while(i<toks.length&&!finished){const stable=i<finalLen||i<toks.length-1;const r=judge(toks[i],toks[i+1],!stable);
+  if(r===0)break;if(r===-1){consumed=toks.length;return}i+=r;consumed=i}}
+
+// ---------- speech ----------
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let rec=null,want=false;
+function startRec(){if(!SR){setMsg("Speech recognition is not available in this browser. On iPhone use Safari.");return}
+ rec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=1;consumed=0;lastLen=0;
+ rec.onresult=e=>{let txt="",fin="";for(let i=0;i<e.results.length;i++){const t=e.results[i][0].transcript;txt+=" "+t;if(e.results[i].isFinal)fin+=" "+t}
+  const toks=txt.split(/\s+/).map(norm).filter(Boolean),fl=fin.split(/\s+/).map(norm).filter(Boolean).length;
+  if(S.heard==="1")$("heard").textContent="Heard: "+toks.slice(-8).join(" ");onWords(toks,fl)};
+ rec.onerror=e=>{if(e.error==="not-allowed"||e.error==="service-not-allowed"){want=false;setMsg("Microphone access is blocked. Allow it in Settings and reload.");ui()}
+  else if(e.error==="network")setMsg("No internet connection — speech recognition needs it.");
+  else if(e.error!=="no-speech"&&e.error!=="aborted")setMsg("Speech error: "+e.error)};
+ rec.onstart=()=>{setMsg("");ui()};
+ rec.onend=()=>{rec=null;if(want)setTimeout(()=>{if(want&&!rec)startRec()},200);else ui()};
+ try{rec.start()}catch(e){setMsg("Could not start the microphone.")}}
+function stopRec(){want=false;if(rec){try{rec.abort()}catch(e){}}ui()}
+function ui(){const on=want&&!finished;$("start").textContent=on?"Listening…":"Start";$("start").classList.toggle("live",on);
+ $("pause").disabled=!started||finished;$("pause").textContent=started&&!want?"Resume Microphone":"Pause Microphone";
+ $("micoff").classList.toggle("on",started&&!want&&!finished)}
+
+// ---------- flow ----------
+function begin(){if(finished)return;started=true;want=true;if(vidSeg!==sent)showSeg(sent);startRec();ui();paint()}
+function finish(){finished=true;stopRec();target=story.segments[vidSeg].dur;
+ setTimeout(()=>{$("endtxt").textContent=`Mistakes: ${errs}`;$("end").classList.add("on")},1500);save(true);paint()}
+function reset(from){stopRec();finished=false;started=false;sent=from||0;pos=0;errs=0;errRow=0;$("end").classList.remove("on");showSeg(sent);$("heard").textContent="";paint();ui()}
+const key=()=>"ra_pos_"+story.id;
+function save(done){try{localStorage.setItem(key(),JSON.stringify(done?{sent:0}:{sent,errs}))}catch(e){}}
+function askResume(){let s=null;try{s=JSON.parse(localStorage.getItem(key())||"null")}catch(e){}
+ if(s&&s.sent>0&&s.sent<story.segments.length){$("askT").textContent=`Continue from sentence ${s.sent+1} or start over?`;$("ask").classList.add("on");
+  $("askC").onclick=()=>{$("ask").classList.remove("on");reset(s.sent);errs=s.errs||0};$("askS").onclick=()=>{$("ask").classList.remove("on");save(true);reset(0)}}}
+
+$("start").onclick=()=>{if(!want)begin()};
+$("pause").onclick=()=>{if(want){stopRec();target=cur}else{want=true;startRec();goWord()}ui()};
+$("over").onclick=()=>{save(true);reset(0)};
+$("again").onclick=()=>{save(true);reset(0)};
+$("skip").onclick=()=>{errRow=0;pos=story.segments[sent].words.length;target=story.segments[sent].dur;const s=sent;sent++;pos=0;if(vidSeg!==s)showSeg(s);target=story.segments[s].dur;if(sent>=story.segments.length)finish();save();paint()};
+
+// ---------- settings ----------
+function syncSeg(){document.querySelectorAll(".seg[data-k]").forEach(s=>[...s.children].forEach(b=>b.classList.toggle("sel",S[s.dataset.k]===b.dataset.v)))}
+document.querySelectorAll(".seg[data-k]").forEach(s=>s.onclick=e=>{const b=e.target.closest("button");if(!b)return;S[s.dataset.k]=b.dataset.v;
+ try{localStorage.setItem("ra_set",JSON.stringify(S))}catch(x){}syncSeg();renderText();$("heard").style.display=S.heard==="1"?"":"none"});
+$("gear").onclick=()=>{syncSeg();$("setSheet").classList.add("on")};$("setClose").onclick=()=>$("setSheet").classList.remove("on");
+
+// ---------- stories & packages ----------
+function listStories(){$("stories").innerHTML=`<div class="story"><span><b>${story.title_en}</b><br><small>${story.level} · ${story.segments.length} sentences${Object.keys(files).length?" · video loaded":""}</small></span><button id="pick">Read</button></div>`;
+ $("pick").onclick=()=>{$("storySheet").classList.remove("on")}}
+$("choose").onclick=()=>{listStories();$("storySheet").classList.add("on")};$("storyClose").onclick=()=>$("storySheet").classList.remove("on");
+function useManifest(man,base){
+ const old=story.segments;
+ const segs=man.segments.slice().sort((a,b)=>a.order-b.order).map((s,i)=>{const w=Array.isArray(s.words)?s.words:null;
+  return {id:s.id,text_en:s.text_en,trigger_words:s.trigger_words,video:s.video,scene:old[i]&&old[i].text_en===s.text_en?old[i].scene:"",action:old[i]?old[i].action:"",
+   marks:w&&w.length===s.text_en.split(/\s+/).length?w.map(x=>+x.t):null}});
+ story=prep({id:man.id||"story",title_en:man.title_en||"Story",level:man.level||"",segments:segs,base});
+ const ea=man.generic_error&&man.generic_error.audio;if(ea){bamUrl=files[ea.split("/").pop()]||(base!=null?base+ea:null)}}
+$("pkg").onchange=async e=>{const fl=[...e.target.files];let man=null;
+ for(const f of fl){const n=f.name;if(/manifest.*\.json$/i.test(n)){try{man=JSON.parse(await f.text())}catch(x){setMsg("manifest.json could not be read.")}}
+  else{files[n]=URL.createObjectURL(f);if(/bam/i.test(n))bamUrl=files[n]}}
+ if(man&&Array.isArray(man.segments)){useManifest(man,null);
+  const miss=story.segments.filter(s=>s.video&&!files[s.video.split("/").pop()]).map(s=>s.video);
+  setMsg(miss.length?"Missing files: "+miss.join(", "):"")}
+ else story.segments.forEach(g=>{if(files[g.id+".mp4"])g.video="video/"+g.id+".mp4"});
+ renderText();reset(0);listStories()};
+// real video length replaces the guessed one
+$("vid").addEventListener("loadedmetadata",()=>{const g=story.segments[vidSeg],d=$("vid").duration;if(g&&isFinite(d)&&d>0)g.dur=Math.max(d,g.marks[g.marks.length-1]+.2)});
+// package uploaded next to this page: load it automatically
+async function autoLoad(){for(const dir of ["story-001-the-house-in-the-forest/","story-001/",""]){
+ try{const r=await fetch(dir+"manifest.json",{cache:"no-store"});if(!r.ok)continue;const man=await r.json();if(!Array.isArray(man.segments))continue;
+  useManifest(man,dir);renderText();reset(0);askResume();return}catch(e){}}}
+autoLoad();
+
+$("heard").style.display=S.heard==="1"?"":"none";
+renderText();showSeg(0);ui();askResume();
+if(!SR)setMsg("Speech recognition is not available in this browser. On iPhone use Safari.");
+}
+</script>
+</body>
+</html>
