@@ -241,7 +241,7 @@ function onWords(toks,finalLen){let cp=0;while(cp<toks.length&&cp<prevToks.lengt
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let rec=null,want=false,lastEv=0;
 let soundAt=0;
 setInterval(()=>{const now=Date.now();const speaking=soundAt>lastEv;
- if(want&&rec&&!freeze&&!finished&&((speaking&&now-lastEv>12000)||now-lastEv>45000)){L(speaking?"watchdog: speech heard but no words for 12s -> restart mic":"watchdog: 45s nothing -> restart mic");lastEv=Date.now();const old=rec;rec=null;old.onend=null;old.onresult=null;try{old.abort()}catch(e){}setTimeout(()=>{if(want&&!rec)startRec()},300)}},1000);
+ if(want&&rec&&!freeze&&!finished&&now-lastEv>10000){L("watchdog: no words for 10s -> restart mic");lastEv=Date.now();const old=rec;rec=null;old.onend=null;old.onresult=null;try{old.abort()}catch(e){}setTimeout(()=>{if(want&&!rec)startRec()},300)}},1000);
 function startRec(){if(!SR){setMsg("Speech recognition is not available in this browser. On iPhone use Safari.");return}
  rec=new SR();rec.lang="en-US";rec.continuous=true;rec.interimResults=true;rec.maxAlternatives=1;consumed=0;lastLen=0;prevToks=[];lastEv=Date.now();L("mic: starting");
  rec.onsoundstart=()=>{soundAt=Date.now();L("mic: sound")};rec.onspeechstart=()=>{soundAt=Date.now();L("mic: speech")};rec.onspeechend=()=>L("mic: speech end");
