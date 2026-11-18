@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "Read Along",
+    "slug": "read-along",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.fixtor.readalong",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Read Along listens while you read the story aloud.",
+        "NSSpeechRecognitionUsageDescription": "Read Along checks the words you read aloud.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.fixtor.readalong"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-video",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Read Along listens while you read the story aloud.",
+          "speechRecognitionPermission": "Read Along checks the words you read aloud."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Read Along listens while you read the story aloud."
+        }
+      ]
+    ]
+  }
+}
