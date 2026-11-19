@@ -1,5 +1,10 @@
 {
   "stories": [
-    { "base": "https://vladadmin76.github.io/read-along-demo/story-001-the-house-in-the-forest/" }
+    {
+      "base": "https://vladadmin76.github.io/read-along-demo/story-001-the-house-in-the-forest/"
+    },
+    {
+      "base": "https://vladadmin76.github.io/read-along-demo/story-002-the-panther-cub/"
+    }
   ]
 }
