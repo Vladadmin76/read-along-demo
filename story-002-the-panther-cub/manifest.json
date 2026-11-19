@@ -1,0 +1,838 @@
+{
+  "id": "story-002",
+  "title_en": "The Panther Cub",
+  "level": "A1",
+  "style": "pencil",
+  "cover": "cover.png",
+  "success_audio": "audio/success-finish.mp3",
+  "segments": [
+    {
+      "id": "S01",
+      "order": 1,
+      "text_en": "One day, a boy and a girl go for a walk.",
+      "trigger_words": [
+        "go",
+        "walk"
+      ],
+      "words": [
+        {
+          "w": "One",
+          "t": 0.0
+        },
+        {
+          "w": "day",
+          "t": 0.5
+        },
+        {
+          "w": "a",
+          "t": 1.0
+        },
+        {
+          "w": "boy",
+          "t": 1.3
+        },
+        {
+          "w": "and",
+          "t": 1.8
+        },
+        {
+          "w": "a",
+          "t": 2.3
+        },
+        {
+          "w": "girl",
+          "t": 2.6
+        },
+        {
+          "w": "go",
+          "t": 3.2
+        },
+        {
+          "w": "for",
+          "t": 3.6
+        },
+        {
+          "w": "a",
+          "t": 4.1
+        },
+        {
+          "w": "walk",
+          "t": 4.4
+        }
+      ],
+      "video": "video/S01.mp4"
+    },
+    {
+      "id": "S02",
+      "order": 2,
+      "text_en": "Suddenly, they hear someone meowing.",
+      "trigger_words": [
+        "hear",
+        "meowing"
+      ],
+      "words": [
+        {
+          "w": "Suddenly",
+          "t": 0.0
+        },
+        {
+          "w": "they",
+          "t": 1.0
+        },
+        {
+          "w": "hear",
+          "t": 1.6
+        },
+        {
+          "w": "someone",
+          "t": 2.2
+        },
+        {
+          "w": "meowing",
+          "t": 3.1
+        }
+      ],
+      "video": "video/S02.mp4"
+    },
+    {
+      "id": "S03",
+      "order": 3,
+      "text_en": "They follow the sound.",
+      "trigger_words": [
+        "follow",
+        "sound"
+      ],
+      "words": [
+        {
+          "w": "They",
+          "t": 0.0
+        },
+        {
+          "w": "follow",
+          "t": 0.8
+        },
+        {
+          "w": "the",
+          "t": 1.9
+        },
+        {
+          "w": "sound",
+          "t": 2.6
+        }
+      ],
+      "video": "video/S03.mp4"
+    },
+    {
+      "id": "S04",
+      "order": 4,
+      "text_en": "In a deep pit, they see a big cat.",
+      "trigger_words": [
+        "see",
+        "cat"
+      ],
+      "words": [
+        {
+          "w": "In",
+          "t": 0.0
+        },
+        {
+          "w": "a",
+          "t": 0.5
+        },
+        {
+          "w": "deep",
+          "t": 0.8
+        },
+        {
+          "w": "pit",
+          "t": 1.5
+        },
+        {
+          "w": "they",
+          "t": 2.1
+        },
+        {
+          "w": "see",
+          "t": 2.9
+        },
+        {
+          "w": "a",
+          "t": 3.5
+        },
+        {
+          "w": "big",
+          "t": 3.8
+        },
+        {
+          "w": "cat",
+          "t": 4.4
+        }
+      ],
+      "video": "video/S04.mp4"
+    },
+    {
+      "id": "S05",
+      "order": 5,
+      "text_en": "The cat cannot climb out.",
+      "trigger_words": [
+        "cannot",
+        "climb"
+      ],
+      "words": [
+        {
+          "w": "The",
+          "t": 0.0
+        },
+        {
+          "w": "cat",
+          "t": 0.7
+        },
+        {
+          "w": "cannot",
+          "t": 1.3
+        },
+        {
+          "w": "climb",
+          "t": 2.4
+        },
+        {
+          "w": "out",
+          "t": 3.3
+        }
+      ],
+      "video": "video/S05.mp4"
+    },
+    {
+      "id": "S06",
+      "order": 6,
+      "text_en": "A big tree grows near the pit.",
+      "trigger_words": [
+        "tree",
+        "pit"
+      ],
+      "words": [
+        {
+          "w": "A",
+          "t": 0.0
+        },
+        {
+          "w": "big",
+          "t": 0.3
+        },
+        {
+          "w": "tree",
+          "t": 0.9
+        },
+        {
+          "w": "grows",
+          "t": 1.5
+        },
+        {
+          "w": "near",
+          "t": 2.3
+        },
+        {
+          "w": "the",
+          "t": 2.9
+        },
+        {
+          "w": "pit",
+          "t": 3.5
+        }
+      ],
+      "video": "video/S06.mp4"
+    },
+    {
+      "id": "S07",
+      "order": 7,
+      "text_en": "The boy holds on to a branch and climbs down.",
+      "trigger_words": [
+        "holds",
+        "climbs"
+      ],
+      "words": [
+        {
+          "w": "The",
+          "t": 0.0
+        },
+        {
+          "w": "boy",
+          "t": 0.7
+        },
+        {
+          "w": "holds",
+          "t": 1.4
+        },
+        {
+          "w": "on",
+          "t": 2.3
+        },
+        {
+          "w": "to",
+          "t": 2.9
+        },
+        {
+          "w": "a",
+          "t": 3.4
+        },
+        {
+          "w": "branch",
+          "t": 3.8
+        },
+        {
+          "w": "and",
+          "t": 4.9
+        },
+        {
+          "w": "climbs",
+          "t": 5.6
+        },
+        {
+          "w": "down",
+          "t": 6.7
+        }
+      ],
+      "video": "video/S07.mp4"
+    },
+    {
+      "id": "S08",
+      "order": 8,
+      "text_en": "He lifts the cat up to the girl.",
+      "trigger_words": [
+        "lifts",
+        "girl"
+      ],
+      "words": [
+        {
+          "w": "He",
+          "t": 0.0
+        },
+        {
+          "w": "lifts",
+          "t": 0.5
+        },
+        {
+          "w": "the",
+          "t": 1.4
+        },
+        {
+          "w": "cat",
+          "t": 2.0
+        },
+        {
+          "w": "up",
+          "t": 2.6
+        },
+        {
+          "w": "to",
+          "t": 3.1
+        },
+        {
+          "w": "the",
+          "t": 3.6
+        },
+        {
+          "w": "girl",
+          "t": 4.2
+        }
+      ],
+      "video": "video/S08.mp4"
+    },
+    {
+      "id": "S09",
+      "order": 9,
+      "text_en": "The boy carries the cat home, and the girl walks beside him and strokes the cat.",
+      "trigger_words": [
+        "carries",
+        "strokes"
+      ],
+      "words": [
+        {
+          "w": "The",
+          "t": 0.0
+        },
+        {
+          "w": "boy",
+          "t": 0.3
+        },
+        {
+          "w": "carries",
+          "t": 0.6
+        },
+        {
+          "w": "the",
+          "t": 1.1
+        },
+        {
+          "w": "cat",
+          "t": 1.4
+        },
+        {
+          "w": "home",
+          "t": 1.7
+        },
+        {
+          "w": "and",
+          "t": 2.0
+        },
+        {
+          "w": "the",
+          "t": 2.3
+        },
+        {
+          "w": "girl",
+          "t": 2.6
+        },
+        {
+          "w": "walks",
+          "t": 3.0
+        },
+        {
+          "w": "beside",
+          "t": 3.4
+        },
+        {
+          "w": "him",
+          "t": 3.8
+        },
+        {
+          "w": "and",
+          "t": 4.1
+        },
+        {
+          "w": "strokes",
+          "t": 4.4
+        },
+        {
+          "w": "the",
+          "t": 4.9
+        },
+        {
+          "w": "cat",
+          "t": 5.2
+        }
+      ],
+      "video": "video/S09.mp4"
+    },
+    {
+      "id": "S10",
+      "order": 10,
+      "text_en": "Near the house, they pour milk into a bowl.",
+      "trigger_words": [
+        "pour",
+        "milk"
+      ],
+      "words": [
+        {
+          "w": "Near",
+          "t": 0.0
+        },
+        {
+          "w": "the",
+          "t": 0.6
+        },
+        {
+          "w": "house",
+          "t": 1.1
+        },
+        {
+          "w": "they",
+          "t": 1.8
+        },
+        {
+          "w": "pour",
+          "t": 2.4
+        },
+        {
+          "w": "milk",
+          "t": 2.9
+        },
+        {
+          "w": "into",
+          "t": 3.5
+        },
+        {
+          "w": "a",
+          "t": 4.1
+        },
+        {
+          "w": "bowl",
+          "t": 4.4
+        }
+      ],
+      "video": "video/S10.mp4"
+    },
+    {
+      "id": "S11",
+      "order": 11,
+      "text_en": "The hungry cat drinks the milk.",
+      "trigger_words": [
+        "drinks",
+        "milk"
+      ],
+      "words": [
+        {
+          "w": "The",
+          "t": 0.0
+        },
+        {
+          "w": "hungry",
+          "t": 0.5
+        },
+        {
+          "w": "cat",
+          "t": 1.4
+        },
+        {
+          "w": "drinks",
+          "t": 1.9
+        },
+        {
+          "w": "the",
+          "t": 2.8
+        },
+        {
+          "w": "milk",
+          "t": 3.4
+        }
+      ],
+      "video": "video/S11.mp4"
+    },
+    {
+      "id": "S12",
+      "order": 12,
+      "text_en": "The cat lifts his head, and the children jump up.",
+      "trigger_words": [
+        "lifts",
+        "jump"
+      ],
+      "words": [
+        {
+          "w": "The",
+          "t": 0.0
+        },
+        {
+          "w": "cat",
+          "t": 0.3
+        },
+        {
+          "w": "lifts",
+          "t": 0.7
+        },
+        {
+          "w": "his",
+          "t": 1.2
+        },
+        {
+          "w": "head",
+          "t": 1.5
+        },
+        {
+          "w": "and",
+          "t": 1.9
+        },
+        {
+          "w": "the",
+          "t": 2.3
+        },
+        {
+          "w": "children",
+          "t": 2.6
+        },
+        {
+          "w": "jump",
+          "t": 3.3
+        },
+        {
+          "w": "up",
+          "t": 3.7
+        }
+      ],
+      "video": "video/S12.mp4"
+    },
+    {
+      "id": "S13",
+      "order": 13,
+      "text_en": "A big black panther comes out of the forest.",
+      "trigger_words": [
+        "panther",
+        "forest"
+      ],
+      "words": [
+        {
+          "w": "A",
+          "t": 0.0
+        },
+        {
+          "w": "big",
+          "t": 0.3
+        },
+        {
+          "w": "black",
+          "t": 0.8
+        },
+        {
+          "w": "panther",
+          "t": 1.6
+        },
+        {
+          "w": "comes",
+          "t": 2.5
+        },
+        {
+          "w": "out",
+          "t": 3.2
+        },
+        {
+          "w": "of",
+          "t": 3.7
+        },
+        {
+          "w": "the",
+          "t": 4.2
+        },
+        {
+          "w": "forest",
+          "t": 4.7
+        }
+      ],
+      "video": "video/S13.mp4"
+    },
+    {
+      "id": "S14",
+      "order": 14,
+      "text_en": "He is not a cat, but a cub, and his mother comes for him.",
+      "trigger_words": [
+        "cub",
+        "mother"
+      ],
+      "words": [
+        {
+          "w": "He",
+          "t": 0.0
+        },
+        {
+          "w": "is",
+          "t": 0.1
+        },
+        {
+          "w": "not",
+          "t": 0.3
+        },
+        {
+          "w": "a",
+          "t": 0.5
+        },
+        {
+          "w": "cat",
+          "t": 0.6
+        },
+        {
+          "w": "but",
+          "t": 0.8
+        },
+        {
+          "w": "a",
+          "t": 0.9
+        },
+        {
+          "w": "cub",
+          "t": 1.1
+        },
+        {
+          "w": "and",
+          "t": 1.2
+        },
+        {
+          "w": "his",
+          "t": 1.4
+        },
+        {
+          "w": "mother",
+          "t": 1.6
+        },
+        {
+          "w": "comes",
+          "t": 1.9
+        },
+        {
+          "w": "for",
+          "t": 2.1
+        },
+        {
+          "w": "him",
+          "t": 2.3
+        }
+      ],
+      "video": "video/S14.mp4"
+    },
+    {
+      "id": "S15",
+      "order": 15,
+      "text_en": "She bows her head to thank the children for saving her cub.",
+      "trigger_words": [
+        "bows",
+        "thank"
+      ],
+      "words": [
+        {
+          "w": "She",
+          "t": 0.0
+        },
+        {
+          "w": "bows",
+          "t": 0.2
+        },
+        {
+          "w": "her",
+          "t": 0.4
+        },
+        {
+          "w": "head",
+          "t": 0.6
+        },
+        {
+          "w": "to",
+          "t": 0.8
+        },
+        {
+          "w": "thank",
+          "t": 0.9
+        },
+        {
+          "w": "the",
+          "t": 1.2
+        },
+        {
+          "w": "children",
+          "t": 1.3
+        },
+        {
+          "w": "for",
+          "t": 1.7
+        },
+        {
+          "w": "saving",
+          "t": 1.9
+        },
+        {
+          "w": "her",
+          "t": 2.1
+        },
+        {
+          "w": "cub",
+          "t": 2.3
+        }
+      ],
+      "video": "video/S15.mp4"
+    },
+    {
+      "id": "S16",
+      "order": 16,
+      "text_en": "She gently takes her baby.",
+      "trigger_words": [
+        "takes",
+        "baby"
+      ],
+      "words": [
+        {
+          "w": "She",
+          "t": 0.0
+        },
+        {
+          "w": "gently",
+          "t": 0.9
+        },
+        {
+          "w": "takes",
+          "t": 3.4
+        },
+        {
+          "w": "her",
+          "t": 4.0
+        },
+        {
+          "w": "baby",
+          "t": 4.4
+        }
+      ],
+      "video": "video/S16.mp4"
+    },
+    {
+      "id": "S17",
+      "order": 17,
+      "text_en": "And they go back into the forest.",
+      "trigger_words": [
+        "go",
+        "forest"
+      ],
+      "words": [
+        {
+          "w": "And",
+          "t": 0.0
+        },
+        {
+          "w": "they",
+          "t": 0.3
+        },
+        {
+          "w": "go",
+          "t": 0.7
+        },
+        {
+          "w": "back",
+          "t": 0.9
+        },
+        {
+          "w": "into",
+          "t": 1.3
+        },
+        {
+          "w": "the",
+          "t": 1.7
+        },
+        {
+          "w": "forest",
+          "t": 2.0
+        }
+      ],
+      "video": "video/S17.mp4"
+    },
+    {
+      "id": "S18",
+      "order": 18,
+      "text_en": "Be kind and help animals.",
+      "trigger_words": [
+        "kind",
+        "help"
+      ],
+      "words": [
+        {
+          "w": "Be",
+          "t": 0.0
+        },
+        {
+          "w": "kind",
+          "t": 1.0
+        },
+        {
+          "w": "and",
+          "t": 2.5
+        },
+        {
+          "w": "help",
+          "t": 3.8
+        },
+        {
+          "w": "animals",
+          "t": 5.2
+        }
+      ],
+      "video": "video/S18.mp4"
+    }
+  ],
+  "generic_error": {
+    "audio": "audio/error-bam.mp3",
+    "type": "generic"
+  }
+}
