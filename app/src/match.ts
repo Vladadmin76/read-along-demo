@@ -64,3 +64,76 @@ export function judge(words: string[], pos: number, tok: string, next: string | 
   if (sim(tok, exp) >= NEAR) return { kind: 'error', why: 'wrong word' };
   return { kind: 'ignore', why: 'not like text' };
 }
+
+// ---------- Whole-phrase alignment (how reading tutors track position) ----------
+// The recognizer keeps revising what it heard ("on a" -> "one day"), so instead of judging
+// word by word we align the whole heard phrase to the sentence and only then decide.
+export type RefOp = { kind: 'ok' | 'sub' | 'del'; h: number; sim: number }; // h = hyp index used (-1 for del)
+export type Alignment = { ops: RefOp[]; refEnd: number };
+
+const INS = 0.6; // extra heard word (um, repeat, other people talking)
+const DEL = 1.0; // sentence word not heard
+const SUB = 1.0; // heard a different word in its place
+
+export function align(ref: string[], hyp: string[], strict: Strictness): Alignment {
+  const th = THRESHOLD[strict];
+  const n = hyp.length, m = ref.length;
+  const S: number[][] = hyp.map((h) => ref.map((r) => sim(h, r)));
+  const D: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  const B: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0)); // 0 diag,1 ins,2 del
+  for (let i = 1; i <= n; i++) { D[i][0] = i * INS; B[i][0] = 1; }
+  for (let j = 1; j <= m; j++) { D[0][j] = j * DEL; B[0][j] = 2; }
+  for (let i = 1; i <= n; i++)
+    for (let j = 1; j <= m; j++) {
+      const d = D[i - 1][j - 1] + (S[i - 1][j - 1] >= th ? 0 : SUB);
+      const a = D[i - 1][j] + INS;
+      const b = D[i][j - 1] + DEL;
+      if (d <= a && d <= b) { D[i][j] = d; B[i][j] = 0; }
+      else if (a <= b) { D[i][j] = a; B[i][j] = 1; }
+      else { D[i][j] = b; B[i][j] = 2; }
+    }
+  // The reader may be in the middle of the sentence: pick the best prefix end (longest on ties).
+  let best = 0;
+  for (let j = 1; j <= m; j++) if (D[n][j] <= D[n][best] + 1e-9) best = j;
+  const ops: RefOp[] = [];
+  let i = n, j = best;
+  while (i > 0 || j > 0) {
+    const k = B[i][j];
+    if (i > 0 && j > 0 && k === 0) {
+      const s = S[i - 1][j - 1];
+      ops.unshift({ kind: s >= th ? 'ok' : 'sub', h: i - 1, sim: s });
+      i--; j--;
+    } else if (i > 0 && (j === 0 || k === 1)) i--;
+    else { ops.unshift({ kind: 'del', h: -1, sim: 0 }); j--; }
+  }
+  return { ops, refEnd: best };
+}
+
+const forgiven = (op: RefOp, word: string, strict: Strictness) => op.kind === 'del' && strict === 'easy' && FUNC_WORDS.has(word);
+
+// Number of sentence words read correctly from the start, and the hyp index right after the last of them.
+export function readPrefix(ref: string[], a: Alignment, strict: Strictness): { pos: number; hypAfter: number } {
+  let pos = 0, hypAfter = 0;
+  for (let k = 0; k < a.ops.length; k++) {
+    const op = a.ops[k];
+    if (op.kind === 'ok') { pos = k + 1; hypAfter = op.h + 1; continue; }
+    if (forgiven(op, ref[k], strict)) { pos = k + 1; continue; }
+    break;
+  }
+  return { pos, hypAfter };
+}
+
+// A mistake is only reported on settled text: a word that is wrong or missing while the reader has
+// already gone on to a later correct word, or a near-miss word the reader stopped on.
+export function findMistake(ref: string[], a: Alignment, strict: Strictness): { at: number; why: string } | null {
+  let lastOk = -1;
+  a.ops.forEach((op, k) => { if (op.kind === 'ok') lastOk = k; });
+  for (let k = 0; k < a.ops.length; k++) {
+    const op = a.ops[k];
+    if (op.kind === 'ok' || forgiven(op, ref[k], strict)) continue;
+    if (k < lastOk) return { at: k, why: op.kind === 'del' ? 'skipped word' : 'wrong word' };
+    if (op.kind === 'sub' && op.sim >= NEAR) return { at: k, why: 'wrong word' };
+    return null;
+  }
+  return null;
+}

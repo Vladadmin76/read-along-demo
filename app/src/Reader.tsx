@@ -6,8 +6,10 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ensureFile, fileIfPresent, readManifest, Sentence, Story, toSentences } from './library';
-import { judge, norm } from './match';
+import { downloadAll, ensureFile, isDownloaded, Manifest, readManifest, Sentence, Story, toSentences, touchOpened } from './library';
+import Loader from './Loader';
+import { align, findMistake, norm, readPrefix } from './match';
+import { LiveTranscriber } from '../modules/live-transcriber';
 import { Settings, SettingsSheet } from './Settings';
 import { C, Btn } from './ui';
 
@@ -35,6 +37,8 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
   const [showSettings, setShowSettings] = useState(false);
   const [ask, setAsk] = useState<null | { sent: number; errs: number }>(null);
   const [showEnd, setShowEnd] = useState(false);
+  const [loading, setLoading] = useState<null | { done: number; total: number; error?: string }>(null);
+  const manRef = useRef<Manifest | null>(null);
   const [cross, setCross] = useState(false);
   const [stage, setStage] = useState({ w: 0, h: 0 });
   const logRef = useRef<string[]>([]);
@@ -53,7 +57,8 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     sent: 0, pos: 0, errs: 0, errRow: 0,
     started: false, finished: false, freeze: false, want: false, running: false,
     vidSeg: -1, target: 0, segReady: false, ended: false,
-    consumed: 0, prevToks: [] as string[], lastEv: 0,
+    toks: [] as string[], base: 0, finalCount: 0, changedAt: 0, settled: true, lastEv: 0,
+    classic: false, liveFailed: false,
     sents: [] as Sentence[], dur: 0,
   }).current;
 
@@ -78,6 +83,12 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
       try {
         const m = await readManifest(story);
         if (!alive) return;
+        manRef.current = m;
+        touchOpened(story.id);
+        if (!isDownloaded(story, m)) {
+          const ok = await fetchAll(m);
+          if (!ok || !alive) return;
+        }
         const ss = toSentences(m);
         E.sents = ss;
         setSentences(ss);
@@ -101,6 +112,32 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
       fin.current?.remove();
     };
   }, [story.id]);
+
+  // ---------- whole-story download ----------
+  const fetchAll = async (m: Manifest) => {
+    setLoading({ done: 0, total: 1 });
+    L('downloading the whole cartoon');
+    try {
+      await downloadAll(story, m, (done, total) => setLoading({ done, total }));
+      L('download complete');
+      setLoading(null);
+      return true;
+    } catch (e: any) {
+      L('download failed: ' + e.message);
+      setLoading((p) => ({ done: p?.done ?? 0, total: p?.total ?? 1, error: 'Check the internet connection. ' + e.message }));
+      return false;
+    }
+  };
+  const retry = async () => {
+    const m = manRef.current;
+    if (!m) return;
+    if (await fetchAll(m)) {
+      const ss = toSentences(m);
+      E.sents = ss;
+      setSentences(ss);
+      showSeg(0);
+    }
+  };
 
   // ---------- video ----------
   const segDur = (i: number) => {
@@ -169,9 +206,10 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
       try { fin.current?.seekTo(0); fin.current?.play(); } catch {}
     }, 1500);
   };
-  const accept = (n: number) => {
+  // Sets the number of correctly read words; returns true when the sentence is finished.
+  const accept = (newPos: number) => {
     const s = E.sents[E.sent];
-    E.pos += n;
+    E.pos = Math.min(newPos, s.words.length);
     goWord();
     if (E.pos >= s.words.length) {
       L(`sentence ${E.sent + 1} done`);
@@ -181,11 +219,15 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
       E.pos = 0;
       save();
       if (E.sent >= E.sents.length) finish();
+      bump();
+      return true;
     }
     bump();
+    return false;
   };
   const mistake = () => {
     E.errs++; E.errRow++; E.pos = 0; E.freeze = true;
+    E.base = E.toks.length;
     showSeg(E.sent);
     setCross(true);
     if (S.current.bam && bam.current) {
@@ -194,41 +236,81 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     setTimeout(() => {
       setCross(false);
       E.freeze = false;
-      E.consumed = E.prevToks.length;
+      E.base = E.toks.length; // words said during the cross do not count
       bump();
     }, 1000);
     bump();
   };
-  const onWords = (toks: string[], finalLen: number) => {
-    let cp = 0;
-    while (cp < toks.length && cp < E.prevToks.length && toks[cp] === E.prevToks[cp]) cp++;
-    if (cp < E.consumed && (cp === 0 || toks.length < E.consumed)) {
-      L(`transcript restarted (had ${E.consumed}, now ${toks.length})`);
-      E.consumed = cp;
-    }
-    E.prevToks = toks;
-    if (E.freeze || E.finished) { E.consumed = toks.length; return; }
-    let i = E.consumed;
-    while (i < toks.length && !E.finished) {
+
+  // The whole heard phrase is aligned to the sentence (see match.ts).
+  // Words light up as soon as they match; a cross only comes from settled text.
+  const evaluate = (settledAll: boolean) => {
+    if (E.freeze || E.finished || !E.started) { E.base = E.toks.length; return; }
+    for (let guard = 0; guard < 50 && !E.finished; guard++) {
       const s = E.sents[E.sent];
-      const stable = i < finalLen || i < toks.length - 1;
-      const v = judge(s.words, E.pos, toks[i], toks[i + 1], !stable, S.current.strict);
-      const tag = `S${E.sent + 1}w${E.pos + 1} "${toks[i]}"~"${s.words[E.pos]}"`;
-      if (v.kind === 'wait') { L(tag + ' wait'); break; }
-      if (v.kind === 'error') { L(tag + ' ERROR ' + v.why); E.consumed = toks.length; mistake(); return; }
-      if (v.kind === 'ignore') { L(tag + ' ignored: ' + v.why); i++; E.consumed = i; continue; }
-      L(tag + ' OK');
-      accept(v.advance);
-      i += v.consume;
-      E.consumed = i;
+      const hyp = E.toks.slice(E.base);
+      if (!hyp.length) return;
+      const a = align(s.words, hyp, S.current.strict);
+      const pr = readPrefix(s.words, a, S.current.strict);
+      if (pr.pos > E.pos) {
+        L(`S${E.sent + 1}: ${pr.pos}/${s.words.length} read ("${hyp.slice(0, pr.hypAfter).join(' ')}")`);
+        if (accept(pr.pos)) { E.base += pr.hypAfter; continue; } // leftover words belong to the next sentence
+      }
+      const settledN = settledAll ? hyp.length : Math.max(0, E.finalCount - E.base);
+      if (settledN > 0) {
+        const sa = settledN >= hyp.length ? a : align(s.words, hyp.slice(0, settledN), S.current.strict);
+        const mk = findMistake(s.words, sa, S.current.strict);
+        if (mk) {
+          L(`S${E.sent + 1}w${mk.at + 1} "${s.words[mk.at]}" ERROR ${mk.why} (heard "${hyp.slice(0, settledN).join(' ')}")`);
+          mistake();
+        }
+      }
+      return;
     }
   };
+  const onTranscript = (toks: string[], finalCount: number) => {
+    if (toks.length < E.base) E.base = toks.length;
+    if (toks.join(' ') !== E.toks.join(' ')) { E.changedAt = Date.now(); E.settled = false; }
+    E.toks = toks;
+    E.finalCount = finalCount;
+    evaluate(false);
+  };
+  // Text that has not changed for 1.5 s counts as settled (for mistakes).
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (E.want && !E.settled && E.toks.length > E.base && Date.now() - E.changedAt > 1500) {
+        E.settled = true;
+        evaluate(true);
+      }
+    }, 250);
+    return () => clearInterval(t);
+  }, []);
 
   // ---------- speech ----------
-  const startRec = () => {
-    E.consumed = 0; E.prevToks = []; E.lastEv = Date.now();
+  const tokens = (text: string) => text.split(/\s+/).map(norm).filter(Boolean);
+  const useLive = () => S.current.engine === 'live' && !E.liveFailed && LiveTranscriber.isAvailable();
+  const startRec = async () => {
+    E.toks = []; E.base = 0; E.finalCount = 0; E.lastEv = Date.now(); E.changedAt = Date.now(); E.settled = true;
+    if (useLive()) {
+      L('mic: starting (continuous SpeechAnalyzer)');
+      try {
+        await LiveTranscriber.start('en-US');
+        E.running = true;
+        L('mic: listening (continuous)');
+        setMsg('');
+      } catch (e: any) {
+        L('continuous mic failed: ' + e.message + ' -> classic recognizer');
+        E.liveFailed = true;
+        startClassic();
+      }
+      return;
+    }
+    startClassic();
+  };
+  const startClassic = () => {
+    E.toks = []; E.base = 0; E.finalCount = 0; E.lastEv = Date.now();
     const words = Array.from(new Set(E.sents.flatMap((s) => s.display.map((w) => w.replace(/[^A-Za-z']/g, ''))))).filter(Boolean).slice(0, 100);
-    L('mic: starting');
+    L('mic: starting (classic)');
     try {
       ExpoSpeechRecognitionModule.start({
         lang: 'en-US',
@@ -240,23 +322,54 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
         iosCategory: IOS_SESSION,
       });
       E.running = true;
+      E.classic = true;
     } catch (e: any) {
       L('mic start failed: ' + e.message);
     }
   };
   const stopMic = () => {
     E.want = false;
-    try { ExpoSpeechRecognitionModule.abort(); } catch {}
+    if (E.classic) {
+      try { ExpoSpeechRecognitionModule.abort(); } catch {}
+      E.classic = false;
+    } else if (E.running) {
+      LiveTranscriber.stop().catch(() => {});
+    }
+    E.running = false;
     bump();
   };
-  useSpeechRecognitionEvent('start', () => { E.lastEv = Date.now(); L('mic: listening'); setMsg(''); });
+
+  // Continuous recognizer events
+  useEffect(() => {
+    if (!LiveTranscriber.isAvailable()) return;
+    const a = LiveTranscriber.onResult((e) => {
+      if (E.classic) return;
+      E.lastEv = Date.now();
+      const toks = tokens(e.text || '');
+      const fin = tokens(e.finalizedText || '').length;
+      setHeard(toks.slice(-8).join(' '));
+      L(`heard[${toks.length}, settled ${fin}]: ${toks.slice(-6).join(' ')}`);
+      onTranscript(toks, fin);
+    });
+    const b = LiveTranscriber.onState((e) => L('mic state: ' + e.state));
+    const c = LiveTranscriber.onError((e) => {
+      L('continuous mic error: ' + e.message);
+      if (E.want && !E.classic) {
+        E.running = false;
+        setTimeout(() => { if (E.want && !E.running) startRec(); }, 500);
+      }
+    });
+    return () => { a.remove(); b.remove(); c.remove(); };
+  }, []);
+
+  // Classic recognizer events (fallback)
+  useSpeechRecognitionEvent('start', () => { E.lastEv = Date.now(); L('mic: listening (classic)'); setMsg(''); });
   useSpeechRecognitionEvent('result', (e) => {
     E.lastEv = Date.now();
-    const text = e.results[0]?.transcript || '';
-    const toks = text.split(/\s+/).map(norm).filter(Boolean);
+    const toks = tokens(e.results[0]?.transcript || '');
     setHeard(toks.slice(-8).join(' '));
     L(`heard[${toks.length}${e.isFinal ? ',final' : ''}]: ${toks.slice(-6).join(' ')}`);
-    onWords(toks, e.isFinal ? toks.length : 0);
+    onTranscript(toks, e.isFinal ? toks.length : 0);
   });
   useSpeechRecognitionEvent('error', (e) => {
     L('mic error: ' + e.error + ' ' + (e.message || ''));
@@ -266,16 +379,17 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     } else if (e.error === 'network') setMsg('No internet connection. Speech recognition needs it.');
   });
   useSpeechRecognitionEvent('end', () => {
+    if (!E.classic) return;
     E.running = false;
     L('mic: ended' + (E.want ? ' -> restart' : ''));
     keepRecordingSession();
-    if (E.want) setTimeout(() => { if (E.want && !E.running) startRec(); }, 150);
+    if (E.want) setTimeout(() => { if (E.want && !E.running) startClassic(); }, 150);
     bump();
   });
-  // Safety net: restart recognition if no words come for 10 s while reading.
+  // Safety net for the classic recognizer: restart if no words come for 10 s while reading.
   useEffect(() => {
     const t = setInterval(() => {
-      if (E.want && E.running && !E.freeze && !E.finished && Date.now() - E.lastEv > 10000) {
+      if (E.classic && E.want && E.running && !E.freeze && !E.finished && Date.now() - E.lastEv > 10000) {
         L('watchdog: no words for 10s -> restart mic');
         E.lastEv = Date.now();
         try { ExpoSpeechRecognitionModule.abort(); } catch {}
@@ -286,7 +400,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
 
   // ---------- buttons ----------
   const begin = async () => {
-    if (E.finished || E.want) return;
+    if (E.finished || E.want || loading || !E.sents.length) return;
     const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!perm.granted) {
       setMsg('Microphone or speech recognition is not allowed. Turn them on in iPhone Settings → Read Along.');
@@ -362,6 +476,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
         {E.started && !E.want && !E.finished && (
           <View style={st.micoff} pointerEvents="none"><Text style={st.micoffT}>Microphone is off</Text></View>
         )}
+        {loading && <Loader done={loading.done} total={loading.total} error={loading.error} onRetry={retry} />}
         {showEnd && (
           <View style={st.end}>
             <Text style={st.endT}>The End</Text>
@@ -413,7 +528,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
       <View style={st.ctr}>
         {big && !E.finished && <Btn label="Skip Sentence" warn onPress={skip} style={{ width: '100%' }} />}
         <View style={st.row}>
-          <Btn label={E.want ? 'Listening…' : 'Start'} primary live={E.want} onPress={begin} style={{ flex: 1 }} />
+          <Btn label={E.want ? 'Listening…' : 'Start'} primary live={E.want} disabled={!!loading || !sentences.length} onPress={begin} style={{ flex: 1 }} />
           <Btn label={E.started && !E.want ? 'Resume Microphone' : 'Pause Microphone'} disabled={!E.started || E.finished} onPress={togglePause} style={{ flex: 1 }} />
         </View>
         <View style={st.row}>

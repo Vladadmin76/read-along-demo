@@ -9,8 +9,9 @@ export type Settings = {
   fade: boolean;
   debug: boolean;
   bam: boolean;
+  engine: 'live' | 'classic';
 };
-export const DEFAULT_SETTINGS: Settings = { strict: 'normal', view: 'one', fade: true, debug: true, bam: true };
+export const DEFAULT_SETTINGS: Settings = { strict: 'normal', view: 'one', fade: true, debug: true, bam: true, engine: 'live' };
 const KEY = 'settings_v1';
 
 export async function loadSettings(): Promise<Settings> {
@@ -54,6 +55,9 @@ export function SettingsSheet({ visible, settings, onChange, onClose, onShareLog
             <Seg value={settings.fade} onChange={(v) => set('fade', v)} options={[[true, 'Fade'], [false, 'Keep']]} />
             <Text style={st.l}>Error sound “bam”</Text>
             <Seg value={settings.bam} onChange={(v) => set('bam', v)} options={[[true, 'On'], [false, 'Off']]} />
+            <Text style={st.l}>Speech recognizer</Text>
+            <Seg value={settings.engine} onChange={(v) => set('engine', v)} options={[['live', 'New (continuous)'], ['classic', 'Old (phrase by phrase)']]} />
+            <Text style={st.note}>New: listens all the time without stops (iOS 26+). Old: restarts after every pause.</Text>
             <Text style={st.l}>Debug log</Text>
             <Seg value={settings.debug} onChange={(v) => set('debug', v)} options={[[true, 'On'], [false, 'Off']]} />
             <Btn label="Share log" onPress={onShareLog} style={{ marginTop: 8 }} />

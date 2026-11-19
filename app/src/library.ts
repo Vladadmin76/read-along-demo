@@ -222,3 +222,67 @@ export function toSentences(m: Manifest): Sentence[] {
     return { id: s.id, display, words: display.map(norm), marks, triggers: (s.trigger_words || []).map(norm), video: s.video };
   });
 }
+
+// ---------- whole-story download & 3-day cleanup ----------
+const OPENED_KEY = 'opened_v1';
+export const KEEP_DAYS = 3;
+
+// Files the reader needs (cover is kept separately for the library list).
+export function mediaFiles(m: Manifest): string[] {
+  const set = new Set<string>();
+  for (const s of m.segments) set.add(s.video);
+  if (m.generic_error?.audio) set.add(m.generic_error.audio);
+  if (m.success_audio) set.add(m.success_audio);
+  return [...set];
+}
+export function isDownloaded(story: Story, m: Manifest) {
+  return mediaFiles(m).every((rel) => !!fileIfPresent(story, rel));
+}
+export async function downloadAll(story: Story, m: Manifest, onProgress: (done: number, total: number) => void) {
+  const files = mediaFiles(m);
+  let done = files.filter((rel) => !!fileIfPresent(story, rel)).length;
+  onProgress(done, files.length);
+  for (const rel of files) {
+    if (fileIfPresent(story, rel)) continue;
+    await ensureFile(story, rel);
+    done++;
+    onProgress(done, files.length);
+  }
+}
+async function openedMap(): Promise<Record<string, number>> {
+  try {
+    return JSON.parse((await AsyncStorage.getItem(OPENED_KEY)) || '{}');
+  } catch {
+    return {};
+  }
+}
+export async function touchOpened(id: string) {
+  const map = await openedMap();
+  map[id] = Date.now();
+  await AsyncStorage.setItem(OPENED_KEY, JSON.stringify(map)).catch(() => {});
+}
+// Deletes cartoon files of stories not opened for KEEP_DAYS days.
+// Only stories that can be downloaded again (remoteBase) are cleaned; ZIP-added stories are kept.
+export async function cleanupOld(log: (m: string) => void) {
+  const map = await openedMap();
+  const now = Date.now();
+  let changed = false;
+  for (const s of await loadLibrary()) {
+    if (!s.remoteBase) continue;
+    let m: Manifest;
+    try {
+      m = await readManifest(s);
+    } catch {
+      continue;
+    }
+    const files = mediaFiles(m);
+    if (!files.some((rel) => !!fileIfPresent(s, rel))) continue;
+    if (!map[s.id]) { map[s.id] = now; changed = true; continue; }
+    if (now - map[s.id] < KEEP_DAYS * 24 * 3600 * 1000) continue;
+    for (const rel of files) {
+      try { localFile(s.id, rel).delete(); } catch {}
+    }
+    log(`cleanup: removed cartoon files of ${s.id}`);
+  }
+  if (changed) await AsyncStorage.setItem(OPENED_KEY, JSON.stringify(map)).catch(() => {});
+}

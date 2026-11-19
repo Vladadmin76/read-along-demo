@@ -3,7 +3,7 @@ import { File } from 'expo-file-system';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { addFromUrl, addFromZipBytes, fileIfPresent, loadLibrary, readManifest, refreshCatalog, removeStory, Story } from './library';
+import { addFromUrl, addFromZipBytes, cleanupOld, fileIfPresent, loadLibrary, readManifest, refreshCatalog, removeStory, Story } from './library';
 import { Btn, C } from './ui';
 
 export default function Library({ onOpen }: { onOpen: (s: Story) => void }) {
@@ -34,6 +34,7 @@ export default function Library({ onOpen }: { onOpen: (s: Story) => void }) {
       setList(local);
       loadCovers(local);
       setBusy('Checking for new stories…');
+      await cleanupOld(log).catch(() => {});
       const l = await refreshCatalog(log);
       setList(l);
       loadCovers(l);
