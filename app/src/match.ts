@@ -111,10 +111,14 @@ export function align(ref: string[], hyp: string[], strict: Strictness): Alignme
 
 const funcForgiven = (op: RefOp, word: string, strict: Strictness) => op.kind === 'del' && strict === 'easy' && FUNC_WORDS.has(word);
 
-// The phone often loses or garbles a short word ("far away" -> "away", "out" -> "oh") or the first word
-// of a sentence. In Easy and Normal ONE such word per sentence is forgiven, but only when the reader went
-// on and read later words correctly (so it is the phone's loss, not a pause). Returns its index or -1.
-const GRACE_LEN = 3;
+// The phone often garbles or loses a word. In Easy and Normal ONE such word per sentence is forgiven,
+// but only when the reader went on and read later words correctly (so it is the phone's loss, not a pause):
+//  - a heard word that SOUNDS like the expected one, but not enough to count as read
+//    (FORGIVE_SIM <= sim < NEAR: "oh" for "out", "got" for "goes"). Unrelated words ("cat" for "boy",
+//    sim ~0) and near-misses ("toy" for "boy") stay real mistakes;
+//  - a lost small word (a, the, to, in...) or the lost FIRST word of the sentence ("far away" -> "away").
+// Returns the index of the forgiven word or -1. Only the first failing word can be forgiven.
+export const FORGIVE_SIM = 0.4;
 function lostWordGrace(ref: string[], a: Alignment, strict: Strictness): number {
   if (strict === 'strict') return -1;
   let lastOk = -1;
@@ -122,22 +126,32 @@ function lostWordGrace(ref: string[], a: Alignment, strict: Strictness): number 
   for (let k = 0; k < lastOk; k++) {
     const op = a.ops[k];
     if (op.kind === 'ok' || funcForgiven(op, ref[k], strict)) continue;
-    if (op.kind === 'sub' && op.sim >= NEAR) return -1; // a near-miss ("toy" for "boy") is a real wrong word
-    return k === 0 || ref[k].length <= GRACE_LEN ? k : -1; // only the first failing word can be forgiven
+    if (op.kind === 'sub') return op.sim >= FORGIVE_SIM && op.sim < NEAR ? k : -1;
+    return k === 0 || FUNC_WORDS.has(ref[k]) ? k : -1; // lost word
   }
   return -1;
 }
 
 // Number of sentence words read correctly from the start, and the hyp index right after the last of them.
+// Highlighting only: one word that did not match, followed by two matching words, is stepped over so the
+// cartoon does not wait while the text settles. The mistake itself is still reported by findMistake.
+// A step-over never finishes the sentence (the last word stays open), so the cross can still come.
 export function readPrefix(ref: string[], a: Alignment, strict: Strictness): { pos: number; hypAfter: number } {
   const grace = lostWordGrace(ref, a, strict);
-  let pos = 0, hypAfter = 0;
+  let pos = 0, hypAfter = 0, stepped = false;
   for (let k = 0; k < a.ops.length; k++) {
     const op = a.ops[k];
     if (op.kind === 'ok') { pos = k + 1; hypAfter = op.h + 1; continue; }
     if (k === grace || funcForgiven(op, ref[k], strict)) { pos = k + 1; if (op.h >= 0) hypAfter = op.h + 1; continue; }
+    if (!stepped && a.ops[k + 1]?.kind === 'ok' && a.ops[k + 2]?.kind === 'ok') {
+      stepped = true;
+      pos = k + 1;
+      if (op.h >= 0) hypAfter = op.h + 1;
+      continue;
+    }
     break;
   }
+  if (stepped && pos >= ref.length) pos = ref.length - 1;
   return { pos, hypAfter };
 }
 

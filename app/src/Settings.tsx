@@ -48,7 +48,7 @@ export function SettingsSheet({ visible, settings, onChange, onClose, onShareLog
             <Text style={st.h}>Settings</Text>
             <Text style={st.l}>Strictness</Text>
             <Seg value={settings.strict} onChange={(v) => set('strict', v)} options={[['easy', 'Easy'], ['normal', 'Normal'], ['strict', 'Strict']]} />
-            <Text style={st.note}>Easy forgives small words (a, the, and…) that the phone did not catch. Easy and Normal also forgive one short or first word per sentence that the phone lost.</Text>
+            <Text style={st.note}>Easy forgives small words (a, the, and…) that the phone did not catch. Easy and Normal also forgive one word per sentence that the phone garbled into a similar sound, or lost if it is a small word or the first word.</Text>
             <Text style={st.l}>Text view</Text>
             <Seg value={settings.view} onChange={(v) => set('view', v)} options={[['one', 'One sentence'], ['scroll', 'Whole story, scrolling']]} />
             <Text style={st.l}>Read text (scrolling view)</Text>
