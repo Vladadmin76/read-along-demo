@@ -57,7 +57,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     sent: 0, pos: 0, errs: 0, errRow: 0,
     started: false, finished: false, freeze: false, want: false, running: false,
     vidSeg: -1, target: 0, segReady: false, ended: false,
-    toks: [] as string[], base: 0, finalCount: 0, changedAt: 0, settled: true, lastEv: 0,
+    toks: [] as string[], base: 0, finalCount: 0, changedAt: 0, times: [] as number[], settled: true, lastEv: 0,
     classic: false, liveFailed: false,
     sents: [] as Sentence[], dur: 0,
   }).current;
@@ -259,7 +259,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
       const settledN = settledAll ? hyp.length : Math.max(0, E.finalCount - E.base);
       if (settledN > 0) {
         const sa = settledN >= hyp.length ? a : align(s.words, hyp.slice(0, settledN), S.current.strict);
-        const mk = findMistake(s.words, sa, S.current.strict);
+        const mk = findMistake(s.words, sa, S.current.strict, hyp.slice(0, settledN), E.times.slice(E.base, E.base + settledN));
         if (mk) {
           L(`S${E.sent + 1}w${mk.at + 1} "${s.words[mk.at]}" ERROR ${mk.why} (heard "${hyp.slice(0, settledN).join(' ')}")`);
           mistake();
@@ -271,6 +271,8 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
   const onTranscript = (toks: string[], finalCount: number) => {
     if (toks.length < E.base) E.base = toks.length;
     if (toks.join(' ') !== E.toks.join(' ')) { E.changedAt = Date.now(); E.settled = false; }
+    const now = Date.now();
+    E.times = toks.map((t, i) => (E.toks[i] === t && E.times[i] !== undefined ? E.times[i] : now)); // arrival time of each word
     E.toks = toks;
     E.finalCount = finalCount;
     evaluate(false);
@@ -280,6 +282,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     const t = setInterval(() => {
       if (E.want && !E.settled && E.toks.length > E.base && Date.now() - E.changedAt > 1500) {
         E.settled = true;
+        L(`text settled after 1.5 s: "${E.toks.slice(E.base).join(' ')}"`);
         evaluate(true);
       }
     }, 250);
@@ -301,7 +304,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     }
   };
   const startRec = async () => {
-    E.toks = []; E.base = 0; E.finalCount = 0; E.lastEv = Date.now(); E.changedAt = Date.now(); E.settled = true;
+    E.toks = []; E.times = []; E.base = 0; E.finalCount = 0; E.lastEv = Date.now(); E.changedAt = Date.now(); E.settled = true;
     if (useLive()) {
       const dict = S.current.engine === 'dictation';
       L(`mic: starting (continuous SpeechAnalyzer, ${dict ? 'Dictation + hints' : 'SpeechTranscriber'})`);
@@ -321,7 +324,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     startClassic();
   };
   const startClassic = () => {
-    E.toks = []; E.base = 0; E.finalCount = 0; E.lastEv = Date.now();
+    E.toks = []; E.times = []; E.base = 0; E.finalCount = 0; E.lastEv = Date.now();
     const words = Array.from(new Set(E.sents.flatMap((s) => s.display.map((w) => w.replace(/[^A-Za-z']/g, ''))))).filter(Boolean).slice(0, 100);
     L('mic: starting (classic)');
     try {
@@ -340,6 +343,24 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
       L('mic start failed: ' + e.message);
     }
   };
+  // Engine changed in Settings while reading: stop the old recognizer and start the new one, no app restart.
+  const lastEngine = useRef(settings.engine);
+  useEffect(() => {
+    if (lastEngine.current === settings.engine) return;
+    const was = lastEngine.current;
+    lastEngine.current = settings.engine;
+    L(`engine switched to ${settings.engine} (was ${was})`);
+    E.liveFailed = false;
+    if (!E.want || !E.started) return; // mic is off: the new engine is used at the next Start
+    (async () => {
+      const wasClassic = E.classic;
+      E.running = false;
+      E.classic = false;
+      if (wasClassic) { try { ExpoSpeechRecognitionModule.abort(); } catch {} }
+      else { try { await LiveTranscriber.stop(); } catch {} }
+      if (E.want) startRec();
+    })();
+  }, [settings.engine]);
   const stopMic = () => {
     E.want = false;
     if (E.classic) {

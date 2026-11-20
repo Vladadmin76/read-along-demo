@@ -118,7 +118,8 @@ final class LiveSession {
         locale: locale,
         contentHints: [],
         transcriptionOptions: [],
-        reportingOptions: [.volatileResults],
+        // frequentFinalization: the engine confirms text sooner, so crosses can come earlier
+        reportingOptions: [.volatileResults, .frequentFinalization],
         attributeOptions: []
       )
       speechModule = d

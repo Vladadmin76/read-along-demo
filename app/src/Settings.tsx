@@ -11,12 +11,16 @@ export type Settings = {
   bam: boolean;
   engine: 'live' | 'dictation' | 'classic';
 };
-export const DEFAULT_SETTINGS: Settings = { strict: 'normal', view: 'one', fade: true, debug: true, bam: true, engine: 'live' };
+export const DEFAULT_SETTINGS: Settings = { strict: 'child', view: 'one', fade: true, debug: true, bam: true, engine: 'live' };
 const KEY = 'settings_v1';
 
 export async function loadSettings(): Promise<Settings> {
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse((await AsyncStorage.getItem(KEY)) || '{}') };
+    const s = { ...DEFAULT_SETTINGS, ...JSON.parse((await AsyncStorage.getItem(KEY)) || '{}') };
+    // old saved values: Easy/Normal -> Child (Strict stays Strict)
+    const old: string = s.strict;
+    if (old !== 'child' && old !== 'adult' && old !== 'strict') s.strict = 'child';
+    return s;
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -47,8 +51,8 @@ export function SettingsSheet({ visible, settings, onChange, onClose, onShareLog
           <ScrollView>
             <Text style={st.h}>Settings</Text>
             <Text style={st.l}>Strictness</Text>
-            <Seg value={settings.strict} onChange={(v) => set('strict', v)} options={[['easy', 'Easy'], ['normal', 'Normal'], ['strict', 'Strict']]} />
-            <Text style={st.note}>Easy forgives small words (a, the, and…) that the phone did not catch. Easy and Normal also forgive one word per sentence that the phone garbled into a similar sound, or lost if it is a small word or the first word.</Text>
+            <Seg value={settings.strict} onChange={(v) => set('strict', v)} options={[['child', 'Child'], ['adult', 'Adult'], ['strict', 'Strict']]} />
+            <Text style={st.note}>Child forgives small words (a, the, and…) that the phone did not catch and accepts words a bit less exactly. Adult is stricter. Child and Adult forgive one word per sentence that the phone garbled into a similar sound, or lost if it is a small word or the first word. Strict forgives nothing. A wrong word right after correct words gets a cross; wrong words after a pause do not.</Text>
             <Text style={st.l}>Text view</Text>
             <Seg value={settings.view} onChange={(v) => set('view', v)} options={[['one', 'One sentence'], ['scroll', 'Whole story, scrolling']]} />
             <Text style={st.l}>Read text (scrolling view)</Text>

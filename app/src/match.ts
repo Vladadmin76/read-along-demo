@@ -1,7 +1,9 @@
 // Word comparison: spelling + rough sound-alike key.
 // Same rules as the tested web demo.
 
-export type Strictness = 'easy' | 'normal' | 'strict';
+// child: gentle (forgives small lost words, lower similarity bar). adult: stricter bar. Both get the "phone lost a word" grace.
+// strict: highest bar, nothing is forgiven.
+export type Strictness = 'child' | 'adult' | 'strict';
 
 export const norm = (w: string) =>
   w.toLowerCase().replace(/[’]/g, "'").replace(/[^a-z0-9']/g, '');
@@ -37,7 +39,7 @@ export function sim(a: string, b: string): number {
   return Math.max(r, pa && pb ? 0.85 * ratio(pa, pb) : 0);
 }
 
-export const THRESHOLD: Record<Strictness, number> = { easy: 0.6, normal: 0.72, strict: 0.88 };
+export const THRESHOLD: Record<Strictness, number> = { child: 0.6, adult: 0.72, strict: 0.88 };
 export const NEAR = 0.55;
 
 // Decision for one heard word against the expected position in the sentence.
@@ -57,7 +59,7 @@ export function judge(words: string[], pos: number, tok: string, next: string | 
   if (exp.startsWith(tok) && !next) return { kind: 'wait' };
   const n1 = words[pos + 1];
   if (n1 && sim(tok, n1) >= th) {
-    if (strict === 'easy' && FUNC_WORDS.has(exp)) return { kind: 'ok', advance: 2, consume: 1 };
+    if (strict === 'child' && FUNC_WORDS.has(exp)) return { kind: 'ok', advance: 2, consume: 1 };
     return { kind: 'error', why: 'skipped word' };
   }
   if (pos > 0 && sim(tok, words[pos - 1]) >= th) return { kind: 'ignore', why: 'repeat' };
@@ -109,9 +111,9 @@ export function align(ref: string[], hyp: string[], strict: Strictness): Alignme
   return { ops, refEnd: best };
 }
 
-const funcForgiven = (op: RefOp, word: string, strict: Strictness) => op.kind === 'del' && strict === 'easy' && FUNC_WORDS.has(word);
+const funcForgiven = (op: RefOp, word: string, strict: Strictness) => op.kind === 'del' && strict === 'child' && FUNC_WORDS.has(word);
 
-// The phone often garbles or loses a word. In Easy and Normal ONE such word per sentence is forgiven,
+// The phone often garbles or loses a word. In Child and Adult (not Strict) ONE such word per sentence is forgiven,
 // but only when the reader went on and read later words correctly (so it is the phone's loss, not a pause):
 //  - a heard word that SOUNDS like the expected one, but not enough to count as read
 //    (FORGIVE_SIM <= sim < NEAR: "oh" for "out", "got" for "goes"). Unrelated words ("cat" for "boy",
@@ -155,9 +157,30 @@ export function readPrefix(ref: string[], a: Alignment, strict: Strictness): { p
   return { pos, hypAfter };
 }
 
+// A heard word that comes right after correct words (no pause) and is not the next word is a mistake,
+// even when more foreign words follow it. After a pause (QUICK_MS or more) foreign words mean the reader got
+// distracted, so they are not punished. Arrival times (ms, one per heard word) come from the app.
+export const QUICK_MS = 1500;
+const FILLERS = new Set(['um', 'uh', 'er', 'erm', 'hm', 'hmm', 'mm', 'ah', 'eh']);
+function quickWrong(ref: string[], a: Alignment, hyp: string[], times: number[], strict: Strictness): { at: number; why: string } | null {
+  const th = THRESHOLD[strict];
+  const pr = readPrefix(ref, a, strict);
+  const pos = pr.pos, h = pr.hypAfter;
+  if (pos <= 0 || pos >= ref.length || h <= 0 || h >= hyp.length) return null;
+  const w = hyp[h], exp = ref[pos];
+  if (FILLERS.has(w)) return null;
+  if (times[h] - times[h - 1] >= QUICK_MS) return null; // pause before it: the reader was distracted
+  if (w === hyp[h - 1] || sim(w, ref[pos - 1]) >= th) return null; // repeat
+  if (exp.startsWith(w) || (hyp[h + 1] && sim(w + hyp[h + 1], exp) >= th)) return null; // word still being written / split word
+  const s = sim(w, exp);
+  if (s >= FORGIVE_SIM && s < NEAR) return null; // sounds like it: the phone may have garbled it (grace rule decides later)
+  return { at: pos, why: 'wrong word (right after correct words)' };
+}
+
 // A mistake is only reported on settled text: a word that is wrong or missing while the reader has
-// already gone on to a later correct word, or a near-miss word the reader stopped on.
-export function findMistake(ref: string[], a: Alignment, strict: Strictness): { at: number; why: string } | null {
+// already gone on to a later correct word, or a near-miss word the reader stopped on, or (with times)
+// a foreign word that came right after the correct ones.
+export function findMistake(ref: string[], a: Alignment, strict: Strictness, hyp?: string[], times?: number[]): { at: number; why: string } | null {
   const grace = lostWordGrace(ref, a, strict);
   let lastOk = -1;
   a.ops.forEach((op, k) => { if (op.kind === 'ok') lastOk = k; });
@@ -166,7 +189,7 @@ export function findMistake(ref: string[], a: Alignment, strict: Strictness): { 
     if (op.kind === 'ok' || k === grace || funcForgiven(op, ref[k], strict)) continue;
     if (k < lastOk) return { at: k, why: op.kind === 'del' ? 'skipped word' : 'wrong word' };
     if (op.kind === 'sub' && op.sim >= NEAR) return { at: k, why: 'wrong word' };
-    return null;
+    break;
   }
-  return null;
+  return hyp && times ? quickWrong(ref, a, hyp, times, strict) : null;
 }
