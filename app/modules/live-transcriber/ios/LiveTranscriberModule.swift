@@ -57,6 +57,8 @@ final class LiveSession {
   private var analyzerFormat: AVAudioFormat?
   private var finalized = ""
   private let lock = NSLock()
+  private var t0 = Date()
+  private var loggedBuffer = false
 
   init(module: LiveTranscriberModule) {
     self.module = module
@@ -76,7 +78,7 @@ final class LiveSession {
     let t = SpeechTranscriber(
       locale: locale,
       transcriptionOptions: [],
-      reportingOptions: [.volatileResults],
+      reportingOptions: [.volatileResults, .fastResults],
       attributeOptions: []
     )
     transcriber = t
@@ -97,6 +99,10 @@ final class LiveSession {
     }
     analyzerFormat = format
 
+    // Warm up the model before the first audio arrives (cuts the delay before the first word).
+    try await a.prepareToAnalyze(in: format)
+    t0 = Date()
+
     let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
     input = continuation
 
@@ -105,6 +111,7 @@ final class LiveSession {
         for try await r in t.results {
           guard let self = self else { return }
           let text = String(r.text.characters).trimmingCharacters(in: .whitespacesAndNewlines)
+          NSLog("[LiveTranscriber] result t=%.2fs final=%@ len=%d", Date().timeIntervalSince(self.t0), r.isFinal ? "Y" : "N", text.count)
           if r.isFinal {
             if !text.isEmpty {
               self.finalized = self.finalized.isEmpty ? text : self.finalized + " " + text
@@ -131,8 +138,14 @@ final class LiveSession {
     let micFormat = node.outputFormat(forBus: 0)
     converter = AVAudioConverter(from: micFormat, to: format)
     node.removeTap(onBus: 0)
-    node.installTap(onBus: 0, bufferSize: 4096, format: micFormat) { [weak self] buffer, _ in
-      self?.feed(buffer)
+    // Small buffer (~20-40 ms): iOS may deliver larger ones, so the real size is logged below.
+    node.installTap(onBus: 0, bufferSize: 1024, format: micFormat) { [weak self] buffer, _ in
+      guard let self = self else { return }
+      if !self.loggedBuffer {
+        self.loggedBuffer = true
+        NSLog("[LiveTranscriber] first tap buffer frames=%d rate=%.0f", buffer.frameLength, buffer.format.sampleRate)
+      }
+      self.feed(buffer)
     }
     engine.prepare()
     try engine.start()
