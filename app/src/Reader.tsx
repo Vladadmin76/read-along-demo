@@ -288,14 +288,27 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
 
   // ---------- speech ----------
   const tokens = (text: string) => text.split(/\s+/).map(norm).filter(Boolean);
-  const useLive = () => S.current.engine === 'live' && !E.liveFailed && LiveTranscriber.isAvailable();
+  const useLive = () => S.current.engine !== 'classic' && !E.liveFailed && LiveTranscriber.isAvailable();
+  const cleanWords = (i: number) =>
+    (E.sents[i]?.display || []).map((w: string) => w.replace(/[^A-Za-z']/g, '')).filter(Boolean);
+  // Word hints for the "New + hints" engine: the sentence being read and the next one (each call replaces the previous hints).
+  const pushContext = () => {
+    if (S.current.engine !== 'dictation' || !E.running || E.classic) return;
+    const words = Array.from(new Set([...cleanWords(E.sent), ...cleanWords(E.sent + 1)]));
+    if (words.length) {
+      L(`hints: ${words.length} words`);
+      LiveTranscriber.setContext(words);
+    }
+  };
   const startRec = async () => {
     E.toks = []; E.base = 0; E.finalCount = 0; E.lastEv = Date.now(); E.changedAt = Date.now(); E.settled = true;
     if (useLive()) {
-      L('mic: starting (continuous SpeechAnalyzer)');
+      const dict = S.current.engine === 'dictation';
+      L(`mic: starting (continuous SpeechAnalyzer, ${dict ? 'Dictation + hints' : 'SpeechTranscriber'})`);
       try {
-        await LiveTranscriber.start('en-US');
+        await LiveTranscriber.start('en-US', dict ? 'dictation' : 'speech');
         E.running = true;
+        pushContext();
         L('mic: listening (continuous)');
         setMsg('');
       } catch (e: any) {
@@ -450,6 +463,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
   const scroll = useRef<any>(null);
   const ys = useRef<number[]>([]);
   const [areaH, setAreaH] = useState(0);
+  useEffect(() => { pushContext(); }, [E.sent]);
   useEffect(() => {
     if (settings.view !== 'scroll') { scroll.current?.scrollTo({ y: 0, animated: false }); return; }
     const y = ys.current[E.sent];

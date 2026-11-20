@@ -9,7 +9,7 @@ export type Settings = {
   fade: boolean;
   debug: boolean;
   bam: boolean;
-  engine: 'live' | 'classic';
+  engine: 'live' | 'dictation' | 'classic';
 };
 export const DEFAULT_SETTINGS: Settings = { strict: 'normal', view: 'one', fade: true, debug: true, bam: true, engine: 'live' };
 const KEY = 'settings_v1';
@@ -48,7 +48,7 @@ export function SettingsSheet({ visible, settings, onChange, onClose, onShareLog
             <Text style={st.h}>Settings</Text>
             <Text style={st.l}>Strictness</Text>
             <Seg value={settings.strict} onChange={(v) => set('strict', v)} options={[['easy', 'Easy'], ['normal', 'Normal'], ['strict', 'Strict']]} />
-            <Text style={st.note}>Easy forgives small words (a, the, and…) that the phone did not catch.</Text>
+            <Text style={st.note}>Easy forgives small words (a, the, and…) that the phone did not catch. Easy and Normal also forgive one short or first word per sentence that the phone lost.</Text>
             <Text style={st.l}>Text view</Text>
             <Seg value={settings.view} onChange={(v) => set('view', v)} options={[['one', 'One sentence'], ['scroll', 'Whole story, scrolling']]} />
             <Text style={st.l}>Read text (scrolling view)</Text>
@@ -56,8 +56,8 @@ export function SettingsSheet({ visible, settings, onChange, onClose, onShareLog
             <Text style={st.l}>Error sound “bam”</Text>
             <Seg value={settings.bam} onChange={(v) => set('bam', v)} options={[[true, 'On'], [false, 'Off']]} />
             <Text style={st.l}>Speech recognizer</Text>
-            <Seg value={settings.engine} onChange={(v) => set('engine', v)} options={[['live', 'New (continuous)'], ['classic', 'Old (phrase by phrase)']]} />
-            <Text style={st.note}>New: listens all the time without stops (iOS 26+). Old: restarts after every pause.</Text>
+            <Seg value={settings.engine} onChange={(v) => set('engine', v)} options={[['live', 'New'], ['dictation', 'New + hints'], ['classic', 'Old']]} />
+            <Text style={st.note}>New: listens all the time without stops (iOS 26+). New + hints: the same, and the phone is told the words of the sentence you read. Old: restarts after every pause.</Text>
             <Text style={st.l}>Debug log</Text>
             <Seg value={settings.debug} onChange={(v) => set('debug', v)} options={[[true, 'On'], [false, 'Off']]} />
             <Btn label="Share log" onPress={onShareLog} style={{ marginTop: 8 }} />

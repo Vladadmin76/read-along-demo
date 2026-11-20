@@ -5,7 +5,8 @@ import { requireOptionalNativeModule } from 'expo';
 export type LiveResult = { text: string; finalizedText: string; isFinal: boolean };
 type Native = {
   isAvailable(): boolean;
-  start(locale: string): Promise<void>;
+  start(locale: string, engine: string): Promise<void>;
+  setContext(words: string[]): Promise<void>;
   stop(): Promise<void>;
   addListener(event: string, cb: (e: any) => void): { remove(): void };
 };
@@ -20,7 +21,9 @@ export const LiveTranscriber = {
       return false;
     }
   },
-  start: (locale = 'en-US') => mod!.start(locale),
+  // engine: 'speech' (SpeechTranscriber) or 'dictation' (DictationTranscriber, accepts word hints)
+  start: (locale = 'en-US', engine: 'speech' | 'dictation' = 'speech') => mod!.start(locale, engine),
+  setContext: (words: string[]) => (mod ? mod.setContext(words).catch(() => {}) : Promise.resolve()),
   stop: () => (mod ? mod.stop() : Promise.resolve()),
   onResult: (cb: (e: LiveResult) => void) => mod!.addListener('onResult', cb),
   onState: (cb: (e: { state: string }) => void) => mod!.addListener('onState', cb),

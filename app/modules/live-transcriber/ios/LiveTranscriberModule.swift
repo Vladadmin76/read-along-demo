@@ -20,14 +20,21 @@ public class LiveTranscriberModule: Module {
       return false
     }
 
-    AsyncFunction("start") { (localeId: String) async throws in
+    AsyncFunction("start") { (localeId: String, engineName: String) async throws in
       guard #available(iOS 26.0, *) else {
         throw Exception(name: "Unavailable", description: "SpeechAnalyzer needs iOS 26 or newer")
       }
       if let old = self.session as? LiveSession { await old.stop() }
       let s = LiveSession(module: self)
       self.session = s
-      try await s.start(localeId: localeId)
+      try await s.start(localeId: localeId, dictation: engineName == "dictation")
+    }
+
+    // Hints with the words of the sentence being read (works with the Dictation engine only).
+    AsyncFunction("setContext") { (words: [String]) async in
+      if #available(iOS 26.0, *), let s = self.session as? LiveSession {
+        await s.setContext(words)
+      }
     }
 
     AsyncFunction("stop") { () async in
@@ -50,7 +57,7 @@ final class LiveSession {
   private weak var module: LiveTranscriberModule?
   private let engine = AVAudioEngine()
   private var analyzer: SpeechAnalyzer?
-  private var transcriber: SpeechTranscriber?
+  private var isDictation = false
   private var input: AsyncStream<AnalyzerInput>.Continuation?
   private var resultsTask: Task<Void, Never>?
   private var converter: AVAudioConverter?
@@ -68,33 +75,81 @@ final class LiveSession {
     module?.sendEvent(name, body)
   }
 
-  func start(localeId: String) async throws {
+  private func handle(text raw: String, isFinal: Bool) {
+    let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    NSLog("[LiveTranscriber] result t=%.2fs final=%@ len=%d", Date().timeIntervalSince(t0), isFinal ? "Y" : "N", text.count)
+    if isFinal {
+      if !text.isEmpty {
+        finalized = finalized.isEmpty ? text : finalized + " " + text
+      }
+      emit("onResult", ["text": finalized, "finalizedText": finalized, "isFinal": true])
+    } else {
+      let all = text.isEmpty ? finalized : (finalized.isEmpty ? text : finalized + " " + text)
+      emit("onResult", ["text": all, "finalizedText": finalized, "isFinal": false])
+    }
+  }
+
+  // Word hints for the Dictation engine (SpeechTranscriber ignores them).
+  func setContext(_ words: [String]) async {
+    guard isDictation, let a = analyzer else { return }
+    let ctx = AnalysisContext()
+    ctx.contextualStrings[.general] = words
+    do {
+      try await a.setContext(ctx)
+      NSLog("[LiveTranscriber] setContext %d words", words.count)
+    } catch {
+      NSLog("[LiveTranscriber] setContext failed: %@", error.localizedDescription)
+    }
+  }
+
+  func start(localeId: String, dictation: Bool) async throws {
+    isDictation = dictation
     let locale = Locale(identifier: localeId)
-    let supported = await SpeechTranscriber.supportedLocales
+    let supported = dictation ? await DictationTranscriber.supportedLocales : await SpeechTranscriber.supportedLocales
     guard supported.contains(where: { $0.identifier(.bcp47) == locale.identifier(.bcp47) }) else {
       throw Exception(name: "Locale", description: "English speech model is not supported on this device")
     }
+    NSLog("[LiveTranscriber] engine=%@", dictation ? "dictation" : "speechtranscriber")
 
-    let t = SpeechTranscriber(
-      locale: locale,
-      transcriptionOptions: [],
-      reportingOptions: [.volatileResults, .fastResults],
-      attributeOptions: []
-    )
-    transcriber = t
+    let speechModule: any SpeechModule
+    let resultsLoop: () async throws -> Void
+    if dictation {
+      let d = DictationTranscriber(
+        locale: locale,
+        contentHints: [],
+        transcriptionOptions: [],
+        reportingOptions: [.volatileResults],
+        attributeOptions: []
+      )
+      speechModule = d
+      resultsLoop = { [weak self] in
+        for try await r in d.results { self?.handle(text: String(r.text.characters), isFinal: r.isFinal) }
+      }
+    } else {
+      let t = SpeechTranscriber(
+        locale: locale,
+        transcriptionOptions: [],
+        reportingOptions: [.volatileResults, .fastResults],
+        attributeOptions: []
+      )
+      speechModule = t
+      resultsLoop = { [weak self] in
+        for try await r in t.results { self?.handle(text: String(r.text.characters), isFinal: r.isFinal) }
+      }
+    }
 
     // The on-device model is downloaded once by the system.
-    let installed = await SpeechTranscriber.installedLocales
+    let installed = dictation ? await DictationTranscriber.installedLocales : await SpeechTranscriber.installedLocales
     if !installed.contains(where: { $0.identifier(.bcp47) == locale.identifier(.bcp47) }) {
       emit("onState", ["state": "downloading-model"])
-      if let request = try await AssetInventory.assetInstallationRequest(supporting: [t]) {
+      if let request = try await AssetInventory.assetInstallationRequest(supporting: [speechModule]) {
         try await request.downloadAndInstall()
       }
     }
 
-    let a = SpeechAnalyzer(modules: [t])
+    let a = SpeechAnalyzer(modules: [speechModule])
     analyzer = a
-    guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [t]) else {
+    guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [speechModule]) else {
       throw Exception(name: "Format", description: "No audio format for the speech model")
     }
     analyzerFormat = format
@@ -108,20 +163,7 @@ final class LiveSession {
 
     resultsTask = Task { [weak self] in
       do {
-        for try await r in t.results {
-          guard let self = self else { return }
-          let text = String(r.text.characters).trimmingCharacters(in: .whitespacesAndNewlines)
-          NSLog("[LiveTranscriber] result t=%.2fs final=%@ len=%d", Date().timeIntervalSince(self.t0), r.isFinal ? "Y" : "N", text.count)
-          if r.isFinal {
-            if !text.isEmpty {
-              self.finalized = self.finalized.isEmpty ? text : self.finalized + " " + text
-            }
-            self.emit("onResult", ["text": self.finalized, "finalizedText": self.finalized, "isFinal": true])
-          } else {
-            let all = text.isEmpty ? self.finalized : (self.finalized.isEmpty ? text : self.finalized + " " + text)
-            self.emit("onResult", ["text": all, "finalizedText": self.finalized, "isFinal": false])
-          }
-        }
+        try await resultsLoop()
       } catch {
         self?.emit("onError", ["message": error.localizedDescription])
       }

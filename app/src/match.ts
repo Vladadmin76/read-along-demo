@@ -109,15 +109,33 @@ export function align(ref: string[], hyp: string[], strict: Strictness): Alignme
   return { ops, refEnd: best };
 }
 
-const forgiven = (op: RefOp, word: string, strict: Strictness) => op.kind === 'del' && strict === 'easy' && FUNC_WORDS.has(word);
+const funcForgiven = (op: RefOp, word: string, strict: Strictness) => op.kind === 'del' && strict === 'easy' && FUNC_WORDS.has(word);
+
+// The phone often loses or garbles a short word ("far away" -> "away", "out" -> "oh") or the first word
+// of a sentence. In Easy and Normal ONE such word per sentence is forgiven, but only when the reader went
+// on and read later words correctly (so it is the phone's loss, not a pause). Returns its index or -1.
+const GRACE_LEN = 3;
+function lostWordGrace(ref: string[], a: Alignment, strict: Strictness): number {
+  if (strict === 'strict') return -1;
+  let lastOk = -1;
+  a.ops.forEach((op, k) => { if (op.kind === 'ok') lastOk = k; });
+  for (let k = 0; k < lastOk; k++) {
+    const op = a.ops[k];
+    if (op.kind === 'ok' || funcForgiven(op, ref[k], strict)) continue;
+    if (op.kind === 'sub' && op.sim >= NEAR) return -1; // a near-miss ("toy" for "boy") is a real wrong word
+    return k === 0 || ref[k].length <= GRACE_LEN ? k : -1; // only the first failing word can be forgiven
+  }
+  return -1;
+}
 
 // Number of sentence words read correctly from the start, and the hyp index right after the last of them.
 export function readPrefix(ref: string[], a: Alignment, strict: Strictness): { pos: number; hypAfter: number } {
+  const grace = lostWordGrace(ref, a, strict);
   let pos = 0, hypAfter = 0;
   for (let k = 0; k < a.ops.length; k++) {
     const op = a.ops[k];
     if (op.kind === 'ok') { pos = k + 1; hypAfter = op.h + 1; continue; }
-    if (forgiven(op, ref[k], strict)) { pos = k + 1; continue; }
+    if (k === grace || funcForgiven(op, ref[k], strict)) { pos = k + 1; if (op.h >= 0) hypAfter = op.h + 1; continue; }
     break;
   }
   return { pos, hypAfter };
@@ -126,11 +144,12 @@ export function readPrefix(ref: string[], a: Alignment, strict: Strictness): { p
 // A mistake is only reported on settled text: a word that is wrong or missing while the reader has
 // already gone on to a later correct word, or a near-miss word the reader stopped on.
 export function findMistake(ref: string[], a: Alignment, strict: Strictness): { at: number; why: string } | null {
+  const grace = lostWordGrace(ref, a, strict);
   let lastOk = -1;
   a.ops.forEach((op, k) => { if (op.kind === 'ok') lastOk = k; });
   for (let k = 0; k < a.ops.length; k++) {
     const op = a.ops[k];
-    if (op.kind === 'ok' || forgiven(op, ref[k], strict)) continue;
+    if (op.kind === 'ok' || k === grace || funcForgiven(op, ref[k], strict)) continue;
     if (k < lastOk) return { at: k, why: op.kind === 'del' ? 'skipped word' : 'wrong word' };
     if (op.kind === 'sub' && op.sim >= NEAR) return { at: k, why: 'wrong word' };
     return null;
