@@ -9,6 +9,9 @@ export const norm = (w: string) =>
   w.toLowerCase().replace(/[’]/g, "'").replace(/[^a-z0-9']/g, '');
 
 export const FUNC_WORDS = new Set(['a', 'an', 'the', 'and', 'is', 'it', 'to', 'on', 'in', 'of', 'he', 'she', 'there']);
+// Small words whose REPLACEMENT by another word is forgiven too (the phone often hears "hey" for "a").
+// he/she/there are not here: "he" for "she" is a real reading mistake.
+export const SUB_FUNC_WORDS = new Set(['a', 'an', 'the', 'and', 'is', 'it', 'to', 'on', 'in', 'of']);
 
 function lev(a: string, b: string): number {
   const m = a.length, n = b.length;
@@ -77,12 +80,22 @@ const INS = 0.6; // extra heard word (um, repeat, other people talking)
 const DEL = 1.0; // sentence word not heard
 const SUB = 1.0; // heard a different word in its place
 
+// One heard word that is the glue of two sentence words: "boys" for "boy goes" (the phone swallowed the start of the
+// next word into the end of the first), or the two words said together ("goesout"). Child and Adult only.
+export function glued(h: string, r1: string, r2: string, strict: Strictness): boolean {
+  if (strict === 'strict') return false;
+  if (ratio(h, r1 + r2) >= 0.85) return true; // spelling only: the sound-alike key is too loose for this ("out" is not "out"+"to")
+  if (r1.length < 3 || h.length <= r1.length || !h.startsWith(r1)) return false;
+  const rest = h.slice(r1.length);
+  return rest.length <= r2.length && r2.includes(rest);
+}
+
 export function align(ref: string[], hyp: string[], strict: Strictness): Alignment {
   const th = THRESHOLD[strict];
   const n = hyp.length, m = ref.length;
   const S: number[][] = hyp.map((h) => ref.map((r) => sim(h, r)));
   const D: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-  const B: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0)); // 0 diag,1 ins,2 del
+  const B: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0)); // 0 diag,1 ins,2 del,3 glue (1 heard = 2 ref)
   for (let i = 1; i <= n; i++) { D[i][0] = i * INS; B[i][0] = 1; }
   for (let j = 1; j <= m; j++) { D[0][j] = j * DEL; B[0][j] = 2; }
   for (let i = 1; i <= n; i++)
@@ -93,6 +106,7 @@ export function align(ref: string[], hyp: string[], strict: Strictness): Alignme
       if (d <= a && d <= b) { D[i][j] = d; B[i][j] = 0; }
       else if (a <= b) { D[i][j] = a; B[i][j] = 1; }
       else { D[i][j] = b; B[i][j] = 2; }
+      if (j >= 2 && D[i - 1][j - 2] < D[i][j] - 1e-9 && glued(hyp[i - 1], ref[j - 2], ref[j - 1], strict)) { D[i][j] = D[i - 1][j - 2]; B[i][j] = 3; }
     }
   // The reader may be in the middle of the sentence: pick the best prefix end (longest on ties).
   let best = 0;
@@ -101,7 +115,10 @@ export function align(ref: string[], hyp: string[], strict: Strictness): Alignme
   let i = n, j = best;
   while (i > 0 || j > 0) {
     const k = B[i][j];
-    if (i > 0 && j > 0 && k === 0) {
+    if (i > 0 && j > 1 && k === 3) {
+      ops.unshift({ kind: 'ok', h: i - 1, sim: 1 }, { kind: 'ok', h: i - 1, sim: 1 });
+      i--; j -= 2;
+    } else if (i > 0 && j > 0 && k === 0) {
       const s = S[i - 1][j - 1];
       ops.unshift({ kind: s >= th ? 'ok' : 'sub', h: i - 1, sim: s });
       i--; j--;
@@ -111,7 +128,8 @@ export function align(ref: string[], hyp: string[], strict: Strictness): Alignme
   return { ops, refEnd: best };
 }
 
-const funcForgiven = (op: RefOp, word: string, strict: Strictness) => op.kind === 'del' && strict === 'child' && FUNC_WORDS.has(word);
+const funcForgiven = (op: RefOp, word: string, strict: Strictness) =>
+  strict === 'child' && (op.kind === 'del' ? FUNC_WORDS.has(word) : op.kind === 'sub' && SUB_FUNC_WORDS.has(word));
 
 // The phone often garbles or loses a word. In Child and Adult (not Strict) ONE such word per sentence is forgiven,
 // but only when the reader went on and read later words correctly (so it is the phone's loss, not a pause):
@@ -128,7 +146,7 @@ function lostWordGrace(ref: string[], a: Alignment, strict: Strictness): number 
   for (let k = 0; k < lastOk; k++) {
     const op = a.ops[k];
     if (op.kind === 'ok' || funcForgiven(op, ref[k], strict)) continue;
-    if (op.kind === 'sub') return op.sim >= FORGIVE_SIM && op.sim < NEAR ? k : -1;
+    if (op.kind === 'sub') return (op.sim >= FORGIVE_SIM && op.sim < NEAR) || SUB_FUNC_WORDS.has(ref[k]) ? k : -1;
     return k === 0 || FUNC_WORDS.has(ref[k]) ? k : -1; // lost word
   }
   return -1;
@@ -168,7 +186,7 @@ function quickWrong(ref: string[], a: Alignment, hyp: string[], times: number[],
   const pos = pr.pos, h = pr.hypAfter;
   if (pos <= 0 || pos >= ref.length || h <= 0 || h >= hyp.length) return null;
   const w = hyp[h], exp = ref[pos];
-  if (FILLERS.has(w)) return null;
+  if (FILLERS.has(w) || SUB_FUNC_WORDS.has(exp)) return null; // a small word may be replaced by the phone: wait for the next words
   if (times[h] - times[h - 1] >= QUICK_MS) return null; // pause before it: the reader was distracted
   if (w === hyp[h - 1] || sim(w, ref[pos - 1]) >= th) return null; // repeat
   if (exp.startsWith(w) || (hyp[h + 1] && sim(w + hyp[h + 1], exp) >= th)) return null; // word still being written / split word

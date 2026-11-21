@@ -307,7 +307,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     E.toks = []; E.times = []; E.base = 0; E.finalCount = 0; E.lastEv = Date.now(); E.changedAt = Date.now(); E.settled = true;
     if (useLive()) {
       const dict = S.current.engine === 'dictation';
-      L(`mic: starting (continuous SpeechAnalyzer, ${dict ? 'Dictation + hints' : 'SpeechTranscriber'})`);
+      L(`mic: starting (continuous SpeechAnalyzer, ${dict ? 'Dictation + hints' : 'SpeechTranscriber'}) strictness=${S.current.strict} engine=${S.current.engine}`);
       try {
         await LiveTranscriber.start('en-US', dict ? 'dictation' : 'speech');
         E.running = true;
@@ -326,7 +326,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
   const startClassic = () => {
     E.toks = []; E.times = []; E.base = 0; E.finalCount = 0; E.lastEv = Date.now();
     const words = Array.from(new Set(E.sents.flatMap((s) => s.display.map((w) => w.replace(/[^A-Za-z']/g, ''))))).filter(Boolean).slice(0, 100);
-    L('mic: starting (classic)');
+    L(`mic: starting (classic) strictness=${S.current.strict} engine=${S.current.engine}`);
     try {
       ExpoSpeechRecognitionModule.start({
         lang: 'en-US',
@@ -349,7 +349,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     if (lastEngine.current === settings.engine) return;
     const was = lastEngine.current;
     lastEngine.current = settings.engine;
-    L(`engine switched to ${settings.engine} (was ${was})`);
+    L(`engine switched to ${settings.engine} (was ${was}), strictness=${settings.strict}`);
     E.liveFailed = false;
     if (!E.want || !E.started) return; // mic is off: the new engine is used at the next Start
     (async () => {
