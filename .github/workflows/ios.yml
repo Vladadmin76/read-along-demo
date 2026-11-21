@@ -32,6 +32,17 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
+      - name: Download Vosk model (English small, bundled into the app)
+        run: |
+          curl -L --fail --retry 5 --retry-delay 5 -o "$RUNNER_TEMP/vosk-model.zip" https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+          SIZE=$(stat -f%z "$RUNNER_TEMP/vosk-model.zip")
+          echo "model zip size: $SIZE"
+          test "$SIZE" = "41205931"
+          unzip -q "$RUNNER_TEMP/vosk-model.zip" -d "$RUNNER_TEMP/vosk"
+          mkdir -p assets
+          mv "$RUNNER_TEMP/vosk/vosk-model-small-en-us-0.15" assets/model-en-us
+          ls assets/model-en-us assets/model-en-us/graph
+
       - name: Generate iOS project
         run: npx expo prebuild --platform ios --clean
 

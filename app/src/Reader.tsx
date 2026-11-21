@@ -59,6 +59,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     vidSeg: -1, target: 0, segReady: false, ended: false,
     toks: [] as string[], base: 0, finalCount: 0, changedAt: 0, times: [] as number[], settled: true, lastEv: 0,
     classic: false, liveFailed: false,
+    vosk: false, voskFailed: false, voskLoaded: false, voskT0: 0, voskFin: [] as string[], voskPart: [] as string[],
     sents: [] as Sentence[], dur: 0,
   }).current;
 
@@ -303,8 +304,46 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
       LiveTranscriber.setContext(words);
     }
   };
+  // ---------- Vosk (offline). One grammar for the whole story: every word of the manifest + "[unk]". ----------
+  const getVosk = (): any => { try { return require('react-native-vosk'); } catch { return null; } };
+  const voskTokens = (text: string) => text.split(/\s+/).map((t) => (t === '[unk]' ? 'zzunk' : norm(t))).filter(Boolean);
+  const startVosk = async (): Promise<boolean> => {
+    const V = getVosk();
+    if (!V) { L('vosk: module not available'); return false; }
+    try {
+      if (!E.voskLoaded) {
+        const t = Date.now();
+        await V.loadModel('model-en-us');
+        E.voskLoaded = true;
+        L(`vosk: model loaded in ${Date.now() - t} ms`);
+      }
+      const words = Array.from(new Set(E.sents.flatMap((s) => s.words))).filter(Boolean);
+      const grammar = [...words, '[unk]'];
+      L(`vosk: grammar ${grammar.length} items, once for the whole story: ${grammar.join(' ')}`);
+      E.voskFin = []; E.voskPart = [];
+      keepRecordingSession(); // the app owns the iPhone audio session (playAndRecord), Vosk must not change it
+      const t1 = Date.now();
+      await V.start({ grammar, manageAudioSession: false });
+      E.voskT0 = Date.now();
+      E.vosk = true; E.running = true;
+      L(`vosk: recognizer started in ${E.voskT0 - t1} ms`);
+      L('mic: listening (vosk)');
+      setMsg('');
+      return true;
+    } catch (e: any) {
+      L('vosk failed: ' + (e?.message || e));
+      return false;
+    }
+  };
   const startRec = async () => {
     E.toks = []; E.times = []; E.base = 0; E.finalCount = 0; E.lastEv = Date.now(); E.changedAt = Date.now(); E.settled = true;
+    E.voskFin = []; E.voskPart = [];
+    if (S.current.engine === 'vosk' && !E.voskFailed) {
+      L(`mic: starting (vosk, offline) strictness=${S.current.strict} engine=${S.current.engine}`);
+      if (await startVosk()) return;
+      E.voskFailed = true;
+      L('vosk could not start -> using the New engine instead');
+    }
     if (useLive()) {
       const dict = S.current.engine === 'dictation';
       L(`mic: starting (continuous SpeechAnalyzer, ${dict ? 'Dictation + hints' : 'SpeechTranscriber'}) strictness=${S.current.strict} engine=${S.current.engine}`);
@@ -351,12 +390,15 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     lastEngine.current = settings.engine;
     L(`engine switched to ${settings.engine} (was ${was}), strictness=${settings.strict}`);
     E.liveFailed = false;
+    E.voskFailed = false;
     if (!E.want || !E.started) return; // mic is off: the new engine is used at the next Start
     (async () => {
-      const wasClassic = E.classic;
+      const wasClassic = E.classic, wasVosk = E.vosk;
       E.running = false;
       E.classic = false;
+      E.vosk = false;
       if (wasClassic) { try { ExpoSpeechRecognitionModule.abort(); } catch {} }
+      else if (wasVosk) { try { getVosk()?.stop(); } catch {} }
       else { try { await LiveTranscriber.stop(); } catch {} }
       if (E.want) startRec();
     })();
@@ -366,12 +408,45 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     if (E.classic) {
       try { ExpoSpeechRecognitionModule.abort(); } catch {}
       E.classic = false;
+    } else if (E.vosk) {
+      E.vosk = false;
+      try { getVosk()?.stop(); } catch {}
     } else if (E.running) {
       LiveTranscriber.stop().catch(() => {});
     }
     E.running = false;
     bump();
   };
+
+  // Vosk events: partial = current phrase, result = finished phrase (after a silence). Texts are only words, no times:
+  // the arrival time of each word is stamped in onTranscript (E.times).
+  useEffect(() => {
+    const V = getVosk();
+    if (!V) return;
+    const feed = (kind: string, text: string) => {
+      if (!E.vosk || !text) return;
+      E.lastEv = Date.now();
+      const toks = voskTokens(text);
+      L(`vosk ${kind} +${Date.now() - E.voskT0}ms: "${text}"`);
+      if (kind === 'partial') E.voskPart = toks;
+      else { E.voskFin = [...E.voskFin, ...toks]; E.voskPart = []; }
+      const all = [...E.voskFin, ...E.voskPart];
+      setHeard(all.slice(-8).join(' '));
+      onTranscript(all, E.voskFin.length);
+    };
+    const subs = [
+      V.onPartialResult((t: string) => feed('partial', t)),
+      V.onResult((t: string) => feed('final', t)),
+      V.onError((e: any) => {
+        L('vosk error: ' + (typeof e === 'string' ? e : e?.message || JSON.stringify(e)));
+        if (E.want && E.vosk) {
+          E.vosk = false; E.running = false;
+          setTimeout(() => { if (E.want && !E.running) startRec(); }, 500);
+        }
+      }),
+    ];
+    return () => subs.forEach((s) => s?.remove?.());
+  }, []);
 
   // Continuous recognizer events
   useEffect(() => {

@@ -9,7 +9,7 @@ export type Settings = {
   fade: boolean;
   debug: boolean;
   bam: boolean;
-  engine: 'live' | 'dictation' | 'classic';
+  engine: 'live' | 'dictation' | 'classic' | 'vosk';
 };
 export const DEFAULT_SETTINGS: Settings = { strict: 'child', view: 'one', fade: true, debug: true, bam: true, engine: 'live' };
 const KEY = 'settings_v1';
@@ -60,8 +60,8 @@ export function SettingsSheet({ visible, settings, onChange, onClose, onShareLog
             <Text style={st.l}>Error sound “bam”</Text>
             <Seg value={settings.bam} onChange={(v) => set('bam', v)} options={[[true, 'On'], [false, 'Off']]} />
             <Text style={st.l}>Speech recognizer</Text>
-            <Seg value={settings.engine} onChange={(v) => set('engine', v)} options={[['live', 'New'], ['dictation', 'New + hints'], ['classic', 'Old']]} />
-            <Text style={st.note}>New: listens all the time without stops (iOS 26+). New + hints: the same, and the phone is told the words of the sentence you read. Old: restarts after every pause.</Text>
+            <Seg value={settings.engine} onChange={(v) => set('engine', v)} options={[['live', 'New'], ['dictation', 'New + hints'], ['classic', 'Old'], ['vosk', 'Vosk']]} />
+            <Text style={st.note}>New: listens all the time without stops (iOS 26+). New + hints: the same, and the phone is told the words of the sentence you read. Old: restarts after every pause. Vosk: works offline with its own small English model; it is told all the words of the story, so a wrong word shows up as [unk] and gets a cross.</Text>
             <Text style={st.l}>Debug log</Text>
             <Seg value={settings.debug} onChange={(v) => set('debug', v)} options={[[true, 'On'], [false, 'Off']]} />
             <Btn label="Share log" onPress={onShareLog} style={{ marginTop: 8 }} />

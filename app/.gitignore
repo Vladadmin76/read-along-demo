@@ -43,3 +43,6 @@ yarn-error.*
 # generated native projects
 /ios
 /android
+
+# Vosk model: downloaded by the GitHub workflow, not stored in git
+/assets/model-en-us/
