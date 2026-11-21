@@ -8,7 +8,8 @@ import { Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View }
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { downloadAll, ensureFile, isDownloaded, Manifest, readManifest, Sentence, Story, toSentences, touchOpened } from './library';
 import Loader from './Loader';
-import { align, findMistake, norm, readPrefix } from './match';
+import { norm } from './match';
+import { MAX_FAILS, newState, stepSentence, type RState, type StepEvent } from './reading';
 import { LiveTranscriber } from '../modules/live-transcriber';
 import { Settings, SettingsSheet } from './Settings';
 import { C, Btn } from './ui';
@@ -59,6 +60,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     vidSeg: -1, target: 0, segReady: false, ended: false,
     toks: [] as string[], base: 0, finalCount: 0, changedAt: 0, times: [] as number[], settled: true, lastEv: 0,
     classic: false, liveFailed: false,
+    rs: null as null | RState, warns: {} as Record<number, number[]>,
     vosk: false, voskFailed: false, voskLoaded: false, voskT0: 0, voskFin: [] as string[], voskPart: [] as string[],
     sents: [] as Sentence[], dur: 0,
   }).current;
@@ -214,6 +216,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     goWord();
     if (E.pos >= s.words.length) {
       L(`sentence ${E.sent + 1} done`);
+      E.rs = null;
       E.target = segDur(E.sent);
       E.errRow = 0;
       E.sent++;
@@ -226,10 +229,13 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     bump();
     return false;
   };
-  const mistake = () => {
-    E.errs++; E.errRow++; E.pos = 0; E.freeze = true;
+  // Cross + "bam". Strict: the sentence starts again (video rewinds). Adult: the repeat starts at the wrong word,
+  // the words read before it stay painted and the video simply waits where it is.
+  const mistake = (restart: boolean, posAfter: number) => {
+    E.errs++; E.errRow++; E.freeze = true;
+    E.pos = restart ? 0 : posAfter;
     E.base = E.toks.length;
-    showSeg(E.sent);
+    if (restart) showSeg(E.sent);
     setCross(true);
     if (S.current.bam && bam.current) {
       try { bam.current.seekTo(0); bam.current.play(); } catch {}
@@ -243,30 +249,39 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     bump();
   };
 
-  // The whole heard phrase is aligned to the sentence (see match.ts).
-  // Words light up as soon as they match; a cross only comes from settled text.
+  // The whole heard phrase is aligned to the sentence (see match.ts, rules per mode in reading.ts).
+  // Words light up as soon as they match; a mistake only comes from settled text.
   const evaluate = (settledAll: boolean) => {
     if (E.freeze || E.finished || !E.started) { E.base = E.toks.length; return; }
     for (let guard = 0; guard < 50 && !E.finished; guard++) {
       const s = E.sents[E.sent];
+      if (!E.rs || E.rs.sent !== E.sent) E.rs = newState(E.sent, s.words);
       const hyp = E.toks.slice(E.base);
       if (!hyp.length) return;
-      const a = align(s.words, hyp, S.current.strict);
-      const pr = readPrefix(s.words, a, S.current.strict);
-      if (pr.pos > E.pos) {
-        L(`S${E.sent + 1}: ${pr.pos}/${s.words.length} read ("${hyp.slice(0, pr.hypAfter).join(' ')}")`);
-        if (accept(pr.pos)) { E.base += pr.hypAfter; continue; } // leftover words belong to the next sentence
-      }
       const settledN = settledAll ? hyp.length : Math.max(0, E.finalCount - E.base);
-      if (settledN > 0) {
-        const sa = settledN >= hyp.length ? a : align(s.words, hyp.slice(0, settledN), S.current.strict);
-        const mk = findMistake(s.words, sa, S.current.strict, hyp.slice(0, settledN), E.times.slice(E.base, E.base + settledN));
-        if (mk) {
-          L(`S${E.sent + 1}w${mk.at + 1} "${s.words[mk.at]}" ERROR ${mk.why} (heard "${hyp.slice(0, settledN).join(' ')}")`);
-          mistake();
-        }
+      const r = stepSentence(E.rs, hyp, E.times.slice(E.base), settledN, S.current.strict);
+      if (r.pos > E.pos) {
+        L(`S${E.sent + 1}: ${r.pos}/${s.words.length} read ("${hyp.slice(0, r.hypAfter).join(' ')}")`);
+        if (accept(r.pos)) { E.base += r.hypAfter; continue; } // leftover words belong to the next sentence
       }
-      return;
+      const ev: StepEvent | null = r.event;
+      if (!ev) return;
+      const where = `S${E.sent + 1}w${ev.at + 1} "${s.words[ev.at]}"`;
+      const heard = `heard "${hyp.slice(0, settledN).join(' ')}"`;
+      if (ev.type === 'cross') {
+        L(ev.restart
+          ? `${where} ERROR ${ev.why} (${heard})`
+          : `${where} attempt ${ev.attempt}/${MAX_FAILS} forced=no CROSS (${ev.why}; ${heard})`);
+        mistake(ev.restart, r.posAfter);
+        return;
+      }
+      // yellow: counted as read, reading goes on (no cross, no "bam")
+      E.errs++;
+      E.warns[E.sent] = [...(E.warns[E.sent] || []), ev.at];
+      L(`${where} attempt ${ev.attempt}${ev.forced ? '/' + MAX_FAILS : ''} forced=${ev.forced ? 'yes' : 'no'} -> counted, yellow (${ev.why}; ${heard})`);
+      E.base += r.consumed;
+      if (r.posAfter > E.pos) accept(r.posAfter);
+      bump();
     }
   };
   const onTranscript = (toks: string[], finalCount: number) => {
@@ -536,7 +551,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
   };
   const reset = (from = 0, errs = 0) => {
     stopMic();
-    Object.assign(E, { sent: from, pos: 0, errs, errRow: 0, started: false, finished: false, freeze: false });
+    Object.assign(E, { sent: from, pos: 0, errs, errRow: 0, started: false, finished: false, freeze: false, rs: null, warns: {} });
     setShowEnd(false);
     setHeard('');
     L('start over from sentence ' + (from + 1));
@@ -546,7 +561,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
   const skip = () => {
     const s = E.sent;
     L(`sentence ${s + 1} skipped`);
-    E.errRow = 0; E.pos = 0;
+    E.errRow = 0; E.pos = 0; E.rs = null;
     if (E.vidSeg !== s) showSeg(s);
     E.target = segDur(s);
     E.sent++;
@@ -611,8 +626,10 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
                 {s.display.map((w, k) => {
                   const ok = done || (active && k < E.pos);
                   const next = active && k === E.pos && E.started;
+                  const warn = ok && !!E.warns[i]?.includes(k);
+                  const bad = active && !!E.rs && E.rs.sent === i && E.rs.bad === k && k >= E.pos;
                   return (
-                    <Text key={k} style={[ok && st.ok, next && st.next]}>
+                    <Text key={k} style={[ok && st.ok, warn && st.warn, bad && st.bad, next && st.next]}>
                       {w}{k < s.display.length - 1 ? ' ' : ''}
                     </Text>
                   );
@@ -685,6 +702,8 @@ const st = StyleSheet.create({
   sentOther: { color: C.soft },
   sentDone: { opacity: 0.35 },
   ok: { color: C.read },
+  warn: { backgroundColor: '#FFE066', color: C.ink },
+  bad: { color: '#D32F2F', textDecorationLine: 'underline', textDecorationColor: '#D32F2F' },
   next: { backgroundColor: C.cur },
   dbg: { position: 'absolute', left: 8, right: 8, bottom: 4, padding: 6, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 8, borderWidth: 1, borderColor: C.line },
   dbgT: { fontSize: 10, lineHeight: 13, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }), color: '#333' },

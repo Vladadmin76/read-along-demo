@@ -139,7 +139,7 @@ const funcForgiven = (op: RefOp, word: string, strict: Strictness) =>
 //  - a lost small word (a, the, to, in...) or the lost FIRST word of the sentence ("far away" -> "away").
 // Returns the index of the forgiven word or -1. Only the first failing word can be forgiven.
 export const FORGIVE_SIM = 0.4;
-function lostWordGrace(ref: string[], a: Alignment, strict: Strictness): number {
+function lostWordGrace(ref: string[], a: Alignment, strict: Strictness, atStart = true): number {
   if (strict === 'strict') return -1;
   let lastOk = -1;
   a.ops.forEach((op, k) => { if (op.kind === 'ok') lastOk = k; });
@@ -147,7 +147,7 @@ function lostWordGrace(ref: string[], a: Alignment, strict: Strictness): number 
     const op = a.ops[k];
     if (op.kind === 'ok' || funcForgiven(op, ref[k], strict)) continue;
     if (op.kind === 'sub') return (op.sim >= FORGIVE_SIM && op.sim < NEAR) || SUB_FUNC_WORDS.has(ref[k]) ? k : -1;
-    return k === 0 || FUNC_WORDS.has(ref[k]) ? k : -1; // lost word
+    return (k === 0 && atStart) || FUNC_WORDS.has(ref[k]) ? k : -1; // lost word
   }
   return -1;
 }
@@ -156,8 +156,8 @@ function lostWordGrace(ref: string[], a: Alignment, strict: Strictness): number 
 // Highlighting only: one word that did not match, followed by two matching words, is stepped over so the
 // cartoon does not wait while the text settles. The mistake itself is still reported by findMistake.
 // A step-over never finishes the sentence (the last word stays open), so the cross can still come.
-export function readPrefix(ref: string[], a: Alignment, strict: Strictness): { pos: number; hypAfter: number } {
-  const grace = lostWordGrace(ref, a, strict);
+export function readPrefix(ref: string[], a: Alignment, strict: Strictness, atStart = true): { pos: number; hypAfter: number } {
+  const grace = lostWordGrace(ref, a, strict, atStart);
   let pos = 0, hypAfter = 0, stepped = false;
   for (let k = 0; k < a.ops.length; k++) {
     const op = a.ops[k];
@@ -180,9 +180,9 @@ export function readPrefix(ref: string[], a: Alignment, strict: Strictness): { p
 // distracted, so they are not punished. Arrival times (ms, one per heard word) come from the app.
 export const QUICK_MS = 1500;
 const FILLERS = new Set(['um', 'uh', 'er', 'erm', 'hm', 'hmm', 'mm', 'ah', 'eh']);
-function quickWrong(ref: string[], a: Alignment, hyp: string[], times: number[], strict: Strictness): { at: number; why: string } | null {
+function quickWrong(ref: string[], a: Alignment, hyp: string[], times: number[], strict: Strictness, atStart: boolean): { at: number; why: string } | null {
   const th = THRESHOLD[strict];
-  const pr = readPrefix(ref, a, strict);
+  const pr = readPrefix(ref, a, strict, atStart);
   const pos = pr.pos, h = pr.hypAfter;
   if (pos <= 0 || pos >= ref.length || h <= 0 || h >= hyp.length) return null;
   const w = hyp[h], exp = ref[pos];
@@ -198,8 +198,8 @@ function quickWrong(ref: string[], a: Alignment, hyp: string[], times: number[],
 // A mistake is only reported on settled text: a word that is wrong or missing while the reader has
 // already gone on to a later correct word, or a near-miss word the reader stopped on, or (with times)
 // a foreign word that came right after the correct ones.
-export function findMistake(ref: string[], a: Alignment, strict: Strictness, hyp?: string[], times?: number[]): { at: number; why: string } | null {
-  const grace = lostWordGrace(ref, a, strict);
+export function findMistake(ref: string[], a: Alignment, strict: Strictness, hyp?: string[], times?: number[], atStart = true): { at: number; why: string } | null {
+  const grace = lostWordGrace(ref, a, strict, atStart);
   let lastOk = -1;
   a.ops.forEach((op, k) => { if (op.kind === 'ok') lastOk = k; });
   for (let k = 0; k < a.ops.length; k++) {
@@ -209,5 +209,5 @@ export function findMistake(ref: string[], a: Alignment, strict: Strictness, hyp
     if (op.kind === 'sub' && op.sim >= NEAR) return { at: k, why: 'wrong word' };
     break;
   }
-  return hyp && times ? quickWrong(ref, a, hyp, times, strict) : null;
+  return hyp && times ? quickWrong(ref, a, hyp, times, strict, atStart) : null;
 }

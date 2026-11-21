@@ -52,7 +52,7 @@ export function SettingsSheet({ visible, settings, onChange, onClose, onShareLog
             <Text style={st.h}>Settings</Text>
             <Text style={st.l}>Strictness</Text>
             <Seg value={settings.strict} onChange={(v) => set('strict', v)} options={[['child', 'Child'], ['adult', 'Adult'], ['strict', 'Strict']]} />
-            <Text style={st.note}>Child forgives small words (a, the, and…) that the phone did not catch and accepts words a bit less exactly. Adult is stricter. Child and Adult forgive one word per sentence that the phone garbled into a similar sound, or lost if it is a small word or the first word. Strict forgives nothing. A wrong word right after correct words gets a cross; wrong words after a pause do not.</Text>
+            <Text style={st.note}>Child: a wrong or missing word is marked yellow and counted, reading goes on, no cross. Adult: a wrong word gets a cross and a red underline, then you read again from that word; after 3 failures on the same word it is counted (yellow). Strict: a cross, and the sentence starts again; nothing is forgiven. Child and Adult also forgive small words (a, the, and…) that the phone did not catch and one garbled word per sentence.</Text>
             <Text style={st.l}>Text view</Text>
             <Seg value={settings.view} onChange={(v) => set('view', v)} options={[['one', 'One sentence'], ['scroll', 'Whole story, scrolling']]} />
             <Text style={st.l}>Read text (scrolling view)</Text>
