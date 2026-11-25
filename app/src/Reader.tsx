@@ -61,7 +61,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     toks: [] as string[], base: 0, finalCount: 0, changedAt: 0, times: [] as number[], settled: true, lastEv: 0,
     classic: false, liveFailed: false,
     rs: null as null | RState, warns: {} as Record<number, number[]>,
-    vosk: false, voskFailed: false, voskLoaded: false, voskT0: 0, voskFin: [] as string[], voskPart: [] as string[],
+    vosk: false, voskLoaded: false, voskT0: 0, voskFin: [] as string[], voskPart: [] as string[],
     sents: [] as Sentence[], dur: 0,
   }).current;
 
@@ -322,9 +322,10 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
   // ---------- Vosk (offline). One grammar for the whole story: every word of the manifest + "[unk]". ----------
   const getVosk = (): any => { try { return require('react-native-vosk'); } catch { return null; } };
   const voskTokens = (text: string) => text.split(/\s+/).map((t) => (t === '[unk]' ? 'zzunk' : norm(t))).filter(Boolean);
-  const startVosk = async (): Promise<boolean> => {
+  // Returns null when Vosk is listening, otherwise the reason it could not start.
+  const startVosk = async (): Promise<string | null> => {
     const V = getVosk();
-    if (!V) { L('vosk: module not available'); return false; }
+    if (!V) return 'module not available';
     try {
       if (!E.voskLoaded) {
         const t = Date.now();
@@ -344,20 +345,25 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
       L(`vosk: recognizer started in ${E.voskT0 - t1} ms`);
       L('mic: listening (vosk)');
       setMsg('');
-      return true;
+      return null;
     } catch (e: any) {
-      L('vosk failed: ' + (e?.message || e));
-      return false;
+      return String(e?.message || e || 'unknown error');
     }
   };
   const startRec = async () => {
     E.toks = []; E.times = []; E.base = 0; E.finalCount = 0; E.lastEv = Date.now(); E.changedAt = Date.now(); E.settled = true;
     E.voskFin = []; E.voskPart = [];
-    if (S.current.engine === 'vosk' && !E.voskFailed) {
+    // Vosk is being tested on its own: when it does not start, the app says so and does NOT switch to another recognizer.
+    if (S.current.engine === 'vosk') {
       L(`mic: starting (vosk, offline) strictness=${S.current.strict} engine=${S.current.engine}`);
-      if (await startVosk()) return;
-      E.voskFailed = true;
-      L('vosk could not start -> using the New engine instead');
+      const err = await startVosk();
+      if (!err) return;
+      L('vosk could not start: ' + err + ' (no switch to another recognizer)');
+      E.want = false;
+      E.running = false;
+      setMsg('Vosk не запустился: ' + (err.length > 80 ? err.slice(0, 80) + '…' : err));
+      bump();
+      return;
     }
     if (useLive()) {
       const dict = S.current.engine === 'dictation';
@@ -405,7 +411,6 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     lastEngine.current = settings.engine;
     L(`engine switched to ${settings.engine} (was ${was}), strictness=${settings.strict}`);
     E.liveFailed = false;
-    E.voskFailed = false;
     if (!E.want || !E.started) return; // mic is off: the new engine is used at the next Start
     (async () => {
       const wasClassic = E.classic, wasVosk = E.vosk;
@@ -525,7 +530,11 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
   // ---------- buttons ----------
   const begin = async () => {
     if (E.finished || E.want || loading || !E.sents.length) return;
-    const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    // Vosk needs only the microphone; Apple speech recognition permission is asked for the Apple recognizers only.
+    const vosk = S.current.engine === 'vosk';
+    const perm = vosk
+      ? await ExpoSpeechRecognitionModule.requestMicrophonePermissionsAsync()
+      : await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!perm.granted) {
       setMsg('Microphone or speech recognition is not allowed. Turn them on in iPhone Settings → Read Along.');
       L('permission denied');
