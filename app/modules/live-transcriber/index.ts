@@ -8,6 +8,7 @@ type Native = {
   start(locale: string, engine: string): Promise<void>;
   setContext(words: string[]): Promise<void>;
   stop(): Promise<void>;
+  audioInfo?(): Record<string, unknown>;
   addListener(event: string, cb: (e: any) => void): { remove(): void };
 };
 
@@ -25,6 +26,14 @@ export const LiveTranscriber = {
   start: (locale = 'en-US', engine: 'speech' | 'dictation' = 'speech') => mod!.start(locale, engine),
   setContext: (words: string[]) => (mod ? mod.setContext(words).catch(() => {}) : Promise.resolve()),
   stop: () => (mod ? mod.stop() : Promise.resolve()),
+  // Audio session, microphone permission and Vosk model folder, for the log. null if the native part is missing.
+  audioInfo: (): Record<string, unknown> | null => {
+    try {
+      return mod?.audioInfo ? mod.audioInfo() : null;
+    } catch (e: any) {
+      return { error: String(e?.message || e) };
+    }
+  },
   onResult: (cb: (e: LiveResult) => void) => mod!.addListener('onResult', cb),
   onState: (cb: (e: { state: string }) => void) => mod!.addListener('onState', cb),
   onError: (cb: (e: { message: string }) => void) => mod!.addListener('onError', cb),

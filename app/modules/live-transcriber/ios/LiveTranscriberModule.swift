@@ -37,6 +37,40 @@ public class LiveTranscriberModule: Module {
       }
     }
 
+    // Diagnostics for the log (used by the Vosk engine too): the iPhone audio session, the microphone
+    // permission and whether the Vosk model folder is inside the app. Reads only, changes nothing.
+    Function("audioInfo") { () -> [String: Any] in
+      let av = AVAudioSession.sharedInstance()
+      var info: [String: Any] = [
+        "category": av.category.rawValue,
+        "mode": av.mode.rawValue,
+        "sampleRate": av.sampleRate,
+        "inputChannels": av.inputNumberOfChannels,
+        "inputAvailable": av.isInputAvailable,
+        "inputs": av.currentRoute.inputs.map { "\($0.portType.rawValue) (\($0.portName))" },
+        "outputs": av.currentRoute.outputs.map { "\($0.portType.rawValue) (\($0.portName))" },
+      ]
+      if #available(iOS 17.0, *) {
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted: info["micPermission"] = "granted"
+        case .denied: info["micPermission"] = "denied"
+        case .undetermined: info["micPermission"] = "undetermined"
+        @unknown default: info["micPermission"] = "unknown"
+        }
+      }
+      let fm = FileManager.default
+      if let res = Bundle.main.resourcePath {
+        let model = (res as NSString).appendingPathComponent("model-en-us")
+        var isDir: ObjCBool = false
+        let exists = fm.fileExists(atPath: model, isDirectory: &isDir)
+        info["voskModelFolder"] = exists ? (isDir.boolValue ? "found" : "is a file, not a folder") : "NOT found"
+        if exists && isDir.boolValue {
+          info["voskModelItems"] = ((try? fm.contentsOfDirectory(atPath: model)) ?? []).sorted()
+        }
+      }
+      return info
+    }
+
     AsyncFunction("stop") { () async in
       if #available(iOS 26.0, *), let s = self.session as? LiveSession {
         await s.stop()

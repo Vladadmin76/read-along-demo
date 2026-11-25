@@ -322,32 +322,73 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
   // ---------- Vosk (offline). One grammar for the whole story: every word of the manifest + "[unk]". ----------
   const getVosk = (): any => { try { return require('react-native-vosk'); } catch { return null; } };
   const voskTokens = (text: string) => text.split(/\s+/).map((t) => (t === '[unk]' ? 'zzunk' : norm(t))).filter(Boolean);
+  // Full text of an error (message, code, native details) for the log.
+  const errText = (e: any): string => {
+    if (e == null) return 'unknown error';
+    if (typeof e === 'string') return e;
+    const parts = [e.code ? `[${e.code}]` : '', e.message || String(e)];
+    if (e.userInfo && Object.keys(e.userInfo).length) parts.push('userInfo=' + JSON.stringify(e.userInfo));
+    const stack = Array.isArray(e.nativeStackIOS) ? e.nativeStackIOS.slice(0, 3).join(' | ') : '';
+    if (stack) parts.push('native: ' + stack);
+    return parts.filter(Boolean).join(' ');
+  };
+  const logAudio = (when: string) => {
+    const info = LiveTranscriber.audioInfo();
+    L(`vosk: audio ${when}: ${info ? JSON.stringify(info) : 'no info (native part missing)'}`);
+  };
   // Returns null when Vosk is listening, otherwise the reason it could not start.
+  // Every start-up step is written to the log, so a failure shows at which step Vosk broke.
   const startVosk = async (): Promise<string | null> => {
     const V = getVosk();
-    if (!V) return 'module not available';
+    if (!V) { L('vosk: step 1/5 module NOT found in the app'); return 'module not available'; }
+    L('vosk: step 1/5 module found');
     try {
-      if (!E.voskLoaded) {
-        const t = Date.now();
+      const mic = await ExpoSpeechRecognitionModule.getMicrophonePermissionsAsync();
+      L(`vosk: step 2/5 microphone permission: ${mic.status}${mic.granted ? '' : ' (NOT granted)'}`);
+    } catch (e: any) {
+      L('vosk: step 2/5 microphone permission check failed: ' + errText(e));
+    }
+    logAudio('before start');
+    if (!E.voskLoaded) {
+      const t = Date.now();
+      try {
         await V.loadModel('model-en-us');
-        E.voskLoaded = true;
-        L(`vosk: model loaded in ${Date.now() - t} ms`);
+      } catch (e: any) {
+        const why = errText(e);
+        L(`vosk: step 3/5 model load FAILED after ${Date.now() - t} ms: ${why}`);
+        return 'model load failed: ' + why;
       }
+      E.voskLoaded = true;
+      L(`vosk: step 3/5 model loaded in ${Date.now() - t} ms`);
+    } else L('vosk: step 3/5 model already loaded');
+    try {
       const words = Array.from(new Set(E.sents.flatMap((s) => s.words))).filter(Boolean);
       const grammar = [...words, '[unk]'];
-      L(`vosk: grammar ${grammar.length} items, once for the whole story: ${grammar.join(' ')}`);
+      L(`vosk: step 4/5 grammar ${grammar.length} items, once for the whole story: ${grammar.join(' ')}`);
       E.voskFin = []; E.voskPart = [];
       keepRecordingSession(); // the app owns the iPhone audio session (playAndRecord), Vosk must not change it
       const t1 = Date.now();
       await V.start({ grammar, manageAudioSession: false });
       E.voskT0 = Date.now();
       E.vosk = true; E.running = true;
-      L(`vosk: recognizer started in ${E.voskT0 - t1} ms`);
+      L(`vosk: step 5/5 recognizer started in ${E.voskT0 - t1} ms`);
       L('mic: listening (vosk)');
+      logAudio('after start');
+      // One check 10 s later: no words at all usually means no sound reaches Vosk (microphone, audio route).
+      const t0 = E.voskT0;
+      setTimeout(() => {
+        if (E.vosk && E.voskT0 === t0 && !E.voskFin.length && !E.voskPart.length) {
+          L('vosk: no words heard in 10 s after start');
+          logAudio('after 10 s without words');
+        }
+      }, 10000);
       setMsg('');
       return null;
     } catch (e: any) {
-      return String(e?.message || e || 'unknown error');
+      const why = errText(e);
+      L('vosk: step 5/5 recognizer start FAILED: ' + why);
+      logAudio('after failed start');
+      return 'start failed: ' + why;
     }
   };
   const startRec = async () => {
@@ -458,7 +499,8 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
       V.onPartialResult((t: string) => feed('partial', t)),
       V.onResult((t: string) => feed('final', t)),
       V.onError((e: any) => {
-        L('vosk error: ' + (typeof e === 'string' ? e : e?.message || JSON.stringify(e)));
+        L('vosk error: ' + errText(e) + (typeof e === 'object' && e ? ' raw=' + JSON.stringify(e) : ''));
+        logAudio('at the error');
         if (E.want && E.vosk) {
           E.vosk = false; E.running = false;
           setTimeout(() => { if (E.want && !E.running) startRec(); }, 500);
