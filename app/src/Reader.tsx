@@ -62,7 +62,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     toks: [] as string[], base: 0, finalCount: 0, changedAt: 0, times: [] as number[], settled: true, lastEv: 0,
     classic: false, liveFailed: false,
     rs: null as null | RState, warns: {} as Record<number, number[]>,
-    vosk: false, voskLoaded: false, voskT0: 0, voskFin: [] as string[], voskPart: [] as string[],
+    vosk: false, swapping: false, swapAgain: false, voskLoaded: false, voskT0: 0, voskFin: [] as string[], voskPart: [] as string[],
     sents: [] as Sentence[], dur: 0,
   }).current;
 
@@ -233,6 +233,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
       E.pos = 0;
       save();
       if (E.sent >= E.sents.length) finish();
+      else if (E.vosk) swapVosk();
       bump();
       return true;
     }
@@ -347,6 +348,40 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     const info = LiveTranscriber.audioInfo();
     L(`vosk: audio ${when}: ${info ? JSON.stringify(info) : 'no info (native part missing)'}`);
   };
+  // Vosk hears only the words of the sentence being read (plus [unk] for everything else), so a wrong word
+  // cannot turn into a word from another sentence ("far" -> "fire", "in the" -> "inside").
+  const voskGrammar = (i: number): string[] => [...Array.from(new Set(E.sents[i]?.words || [])).filter(Boolean), '[unk]'];
+  // Gives Vosk the words of the next sentence. Runs while the finished sentence's clip plays (nothing is read then).
+  const swapVosk = async () => {
+    if (E.swapping) { E.swapAgain = true; return; }
+    E.swapping = true;
+    try {
+      do {
+        E.swapAgain = false;
+        const V = getVosk();
+        if (!V || !E.vosk || !E.want || E.finished || !E.sents[E.sent]) break;
+        const t = Date.now();
+        const grammar = voskGrammar(E.sent);
+        E.vosk = false; // events of the old recognizer are ignored from now on
+        try { V.stop(); } catch {}
+        await new Promise((r) => setTimeout(r, 150));
+        E.toks = []; E.times = []; E.base = 0; E.finalCount = 0; E.voskFin = []; E.voskPart = [];
+        keepRecordingSession();
+        await V.start({ grammar, manageAudioSession: false });
+        if (!E.want) { try { V.stop(); } catch {} E.running = false; break; } // the microphone was paused meanwhile
+        E.voskT0 = Date.now(); E.vosk = true; E.running = true;
+        L(`vosk: grammar for sentence ${E.sent + 1} ready in ${Date.now() - t} ms: ${grammar.join(' ')}`);
+      } while (E.swapAgain);
+    } catch (e: any) {
+      const why = errText(e);
+      L('vosk: grammar swap FAILED: ' + why + ' (no switch to another recognizer)');
+      E.vosk = false; E.running = false; E.want = false;
+      setMsg('Vosk не запустился: ' + (why.length > 80 ? why.slice(0, 80) + '…' : why));
+    } finally {
+      E.swapping = false;
+      bump();
+    }
+  };
   // Returns null when Vosk is listening, otherwise the reason it could not start.
   // Every start-up step is written to the log, so a failure shows at which step Vosk broke.
   const startVosk = async (): Promise<string | null> => {
@@ -373,9 +408,8 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
       L(`vosk: step 3/5 model loaded in ${Date.now() - t} ms`);
     } else L('vosk: step 3/5 model already loaded');
     try {
-      const words = Array.from(new Set(E.sents.flatMap((s) => s.words))).filter(Boolean);
-      const grammar = [...words, '[unk]'];
-      L(`vosk: step 4/5 grammar ${grammar.length} items, once for the whole story: ${grammar.join(' ')}`);
+      const grammar = voskGrammar(E.sent);
+      L(`vosk: step 4/5 grammar for sentence ${E.sent + 1}: ${grammar.length} items: ${grammar.join(' ')}`);
       E.voskFin = []; E.voskPart = [];
       keepRecordingSession(); // the app owns the iPhone audio session (playAndRecord), Vosk must not change it
       const t1 = Date.now();
@@ -628,6 +662,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     E.sent++;
     save();
     if (E.sent >= E.sents.length) finish();
+    else if (E.vosk) swapVosk();
     bump();
   };
 
