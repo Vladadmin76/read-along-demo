@@ -32,6 +32,9 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
+      - name: Stamp build number into the app (shown first in the debug log)
+        run: echo "export const BUILD = 'build-${{ github.run_number }} ${GITHUB_SHA::7}';" > src/buildInfo.ts
+
       - name: Download Vosk model (English small, bundled into the app)
         run: |
           curl -L --fail --retry 5 --retry-delay 5 -o "$RUNNER_TEMP/vosk-model.zip" https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip

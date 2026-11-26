@@ -217,3 +217,4 @@ npx expo export --platform ios --output-dir /tmp/expo-check
   3. **Vosk — движок по умолчанию** (`DEFAULT_SETTINGS.engine = 'vosk'`). Уже сохранённые настройки на телефоне не меняются: у кого стоит New, переключить в Settings → Speech recognizer → Vosk.
   4. Решение: котёнок-помощник (внизу экрана, кнопка запуска видео после прочтения) пока не сделан, будет позже. Тексты и пакеты рассказов не менялись.
   - `tsc --noEmit` и `expo export --platform ios` проходят. На телефоне не проверялось.
+- **26 ноября 2026 (вечер):** первой строкой журнала теперь `BUILD: build-N <коммит>`. Номер подставляет workflow (шаг «Stamp build number», `app/src/buildInfo.ts`); он совпадает с тегом релиза `build-N`. `BUILD: dev` значит локальный запуск без штампа.

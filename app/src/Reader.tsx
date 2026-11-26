@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { downloadAll, ensureFile, isDownloaded, Manifest, readManifest, Sentence, Story, toSentences, touchOpened } from './library';
+import { BUILD } from './buildInfo';
 import Loader from './Loader';
 import { norm } from './match';
 import { MAX_FAILS, newState, stepSentence, type RState, type StepEvent } from './reading';
@@ -42,7 +43,7 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
   const manRef = useRef<Manifest | null>(null);
   const [cross, setCross] = useState(false);
   const [stage, setStage] = useState({ w: 0, h: 0 });
-  const logRef = useRef<string[]>([]);
+  const logRef = useRef<string[]>(['0.0s BUILD: ' + BUILD]); // first line of every log: which build is installed
   const t0 = useRef(Date.now());
   const L = useCallback((m: string) => {
     const line = ((Date.now() - t0.current) / 1000).toFixed(1) + 's ' + m;
