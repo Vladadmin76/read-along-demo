@@ -12,6 +12,8 @@ import Loader from './Loader';
 import { norm } from './match';
 import { MAX_FAILS, newState, stepSentence, type RState, type StepEvent } from './reading';
 import { LiveTranscriber } from '../modules/live-transcriber';
+
+const SHOW_PROGRESS = false; // the "3 of 14" progress bar is hidden for now
 import { Settings, SettingsSheet } from './Settings';
 import { C, Btn } from './ui';
 
@@ -742,10 +744,13 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
       </View>
 
       {!!heard && settings.debug && <Text style={st.heard} numberOfLines={1}>Heard: {heard}</Text>}
-      <View style={st.prog}>
-        <Text style={st.progT}>{Math.min(E.sent + 1, n || 1)} of {n}</Text>
-        <View style={st.pb}><View style={[st.pbI, { width: `${n ? (100 * (E.finished ? n : E.sent)) / n : 0}%` }]} /></View>
-      </View>
+      {/* Progress ("3 of 14" + bar) is hidden for now; the counting stays, set SHOW_PROGRESS to true to bring it back. */}
+      {SHOW_PROGRESS && (
+        <View style={st.prog}>
+          <Text style={st.progT}>{Math.min(E.sent + 1, n || 1)} of {n}</Text>
+          <View style={st.pb}><View style={[st.pbI, { width: `${n ? (100 * (E.finished ? n : E.sent)) / n : 0}%` }]} /></View>
+        </View>
+      )}
       {!!msg && <Text style={st.msg}>{msg}</Text>}
 
       <View style={st.ctr}>
