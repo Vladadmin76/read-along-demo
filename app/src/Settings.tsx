@@ -11,7 +11,7 @@ export type Settings = {
   bam: boolean;
   engine: 'live' | 'dictation' | 'classic' | 'vosk';
 };
-export const DEFAULT_SETTINGS: Settings = { strict: 'child', view: 'one', fade: true, debug: true, bam: true, engine: 'live' };
+export const DEFAULT_SETTINGS: Settings = { strict: 'child', view: 'one', fade: true, debug: true, bam: true, engine: 'vosk' };
 const KEY = 'settings_v1';
 
 export async function loadSettings(): Promise<Settings> {

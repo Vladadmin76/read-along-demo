@@ -190,8 +190,10 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
 
   const goWord = () => {
     const s = E.sents[E.sent];
-    if (E.vidSeg !== E.sent) showSeg(E.sent);
-    E.target = E.pos > 0 ? s.marks[Math.min(E.pos, s.marks.length) - 1] : 0;
+    if (E.vidSeg > E.sent) showSeg(E.sent);
+    // The clip waits on its first frame while the sentence is read; it plays the whole sentence at once
+    // (no pauses) only when the last word is read. The timer loads the next clip when this one ends.
+    E.target = 0;
     if (E.pos >= s.words.length) E.target = segDur(E.sent);
   };
 
@@ -204,10 +206,17 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
     stopMic();
     L('story finished');
     save(true);
-    setTimeout(() => {
-      setShowEnd(true);
-      try { fin.current?.seekTo(0); fin.current?.play(); } catch {}
-    }, 1500);
+    // Let the last clip play to its end first, then show the ending.
+    const t0 = Date.now();
+    const wait = setInterval(() => {
+      const d = segDur(E.vidSeg);
+      if (!(E.ended || player.currentTime >= d - 0.15 || Date.now() - t0 > (d + 3) * 1000)) return;
+      clearInterval(wait);
+      setTimeout(() => {
+        setShowEnd(true);
+        try { fin.current?.seekTo(0); fin.current?.play(); } catch {}
+      }, 800);
+    }, 100);
   };
   // Sets the number of correctly read words; returns true when the sentence is finished.
   const accept = (newPos: number) => {
@@ -252,7 +261,8 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
   // The whole heard phrase is aligned to the sentence (see match.ts, rules per mode in reading.ts).
   // Words light up as soon as they match; a mistake only comes from settled text.
   const evaluate = (settledAll: boolean) => {
-    if (E.freeze || E.finished || !E.started) { E.base = E.toks.length; return; }
+    // While the clip of the finished sentence plays (E.vidSeg < E.sent), nothing is read: the child watches.
+    if (E.freeze || E.finished || !E.started || E.vidSeg < E.sent) { E.base = E.toks.length; return; }
     for (let guard = 0; guard < 50 && !E.finished; guard++) {
       const s = E.sents[E.sent];
       if (!E.rs || E.rs.sent !== E.sent) E.rs = newState(E.sent, s.words);
@@ -590,7 +600,6 @@ export default function Reader({ story, settings, setSettings, onBack }: Props) 
   const togglePause = () => {
     if (E.want) {
       stopMic();
-      E.target = player.currentTime;
       L('microphone paused');
     } else {
       E.want = true;
